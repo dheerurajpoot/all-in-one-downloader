@@ -44,9 +44,10 @@ export default function Page() {
 						</h1>
 
 						<p className='text-balance text-lg text-muted-foreground max-w-2xl mx-auto'>
-							Get your favorite videos from YouTube, Instagram,
-							and Facebook in seconds. Fast, free, and no
-							registration required.
+							Paste any video link from YouTube, Instagram,
+							Facebook, or TikTok. Our system automatically
+							detects the platform and provides high-quality
+							download options.
 						</p>
 					</div>
 
@@ -168,18 +169,18 @@ export default function Page() {
 						{[
 							{
 								step: 1,
-								title: "Copy Link",
-								desc: "Copy the video URL from your favorite social platform.",
+								title: "Copy Video Link",
+								desc: "Copy the URL of the video you want to download from any social platform.",
 							},
 							{
 								step: 2,
-								title: "Paste URL",
-								desc: "Paste the link into the downloader form at the top.",
+								title: "Paste into Downloader",
+								desc: "Paste the link into the smart search bar above. No platform selection needed!",
 							},
 							{
 								step: 3,
-								title: "Download",
-								desc: "Choose quality and click download to save the video.",
+								title: "Get Your Video",
+								desc: "Our system detects the link and gives you the best quality download options.",
 							},
 						].map((item, i) => (
 							<div

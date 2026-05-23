@@ -8,6 +8,8 @@ import {
 	Download as DownloadIcon,
 	Loader2,
 	Copy,
+	Link as LinkIcon,
+	Zap,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -29,21 +31,19 @@ interface DownloadResponse {
 		url: string;
 	}>;
 	quality?: string;
+	picker?: Array<{
+		url: string;
+		thumb?: string;
+		type?: string;
+	}>;
 }
 
 export function DownloaderForm() {
 	const [url, setUrl] = useState("");
-	const [platform, setPlatform] = useState("youtube");
 	const [loading, setLoading] = useState(false);
 	const [response, setResponse] = useState<DownloadResponse | null>(null);
 	const [error, setError] = useState("");
 	const [selectedQuality, setSelectedQuality] = useState<string>("");
-
-	const platforms = [
-		{ id: "youtube", label: "YouTube", icon: "▶️" },
-		{ id: "instagram", label: "Instagram", icon: "📸" },
-		{ id: "facebook", label: "Facebook", icon: "👤" },
-	];
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -62,7 +62,7 @@ export function DownloaderForm() {
 			const res = await fetch("/api/download", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ url: url.trim(), platform }),
+				body: JSON.stringify({ url: url.trim() }),
 			});
 
 			const data = await res.json();
@@ -84,7 +84,7 @@ export function DownloaderForm() {
 			}
 		} catch (err) {
 			setError("An error occurred. Please try again.");
-			console.error("[v0] Error:", err);
+			console.error("[Downloader] Error:", err);
 		} finally {
 			setLoading(false);
 		}
@@ -104,56 +104,40 @@ export function DownloaderForm() {
 	};
 
 	const handleCopyUrl = () => {
-		if (selectedQuality) {
-			navigator.clipboard.writeText(selectedQuality);
+		const linkToCopy = selectedQuality || response?.downloadLink;
+		if (linkToCopy) {
+			navigator.clipboard.writeText(linkToCopy);
 		}
 	};
 
 	return (
 		<div className='w-full max-w-2xl mx-auto'>
 			<form onSubmit={handleSubmit} className='space-y-6'>
-				{/* Platform Selection */}
-				<div>
-					<label className='block text-sm font-semibold text-foreground mb-3'>
-						Select Platform
-					</label>
-					<div className='grid grid-cols-3 gap-3'>
-						{platforms.map((p) => (
-							<button
-								key={p.id}
-								type='button'
-								onClick={() => setPlatform(p.id)}
-								className={`p-4 rounded-lg border-2 transition-all font-medium flex flex-col items-center gap-2 ${
-									platform === p.id
-										? "border-primary bg-primary/10 text-primary"
-										: "border-border bg-muted hover:border-primary/50 text-foreground"
-								}`}>
-								<span className='text-2xl'>{p.icon}</span>
-								{p.label}
-							</button>
-						))}
-					</div>
-				</div>
-
 				{/* URL Input */}
-				<div>
+				<div className='relative'>
 					<label
 						htmlFor='url'
-						className='block text-sm font-semibold text-foreground mb-2'>
-						Enter Video URL
+						className='block text-sm font-bold text-foreground mb-3'>
+						Paste Video URL
 					</label>
-					<Input
-						id='url'
-						type='url'
-						placeholder={`Paste your ${platforms.find((p) => p.id === platform)?.label} video URL here...`}
-						value={url}
-						onChange={(e) => setUrl(e.target.value)}
-						className='w-full'
-						disabled={loading}
-					/>
-					<p className='text-xs text-muted-foreground mt-2'>
-						Paste the direct link to your video. Works with posts,
-						reels, shorts, and more.
+					<div className='relative group'>
+						<div className='absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors'>
+							<LinkIcon className='h-5 w-5' />
+						</div>
+						<Input
+							id='url'
+							type='url'
+							placeholder='Paste YouTube, Instagram, Facebook, or TikTok URL here...'
+							value={url}
+							onChange={(e) => setUrl(e.target.value)}
+							className='w-full h-14 pl-12 pr-4 text-base rounded-xl border-2 border-border focus:border-primary focus:ring-primary/20 transition-all shadow-sm'
+							disabled={loading}
+						/>
+					</div>
+					<p className='text-xs text-muted-foreground mt-3 flex items-center gap-1.5 px-1'>
+						<Zap className='h-3 w-3 text-primary' />
+						Supports Reels, Shorts, Posts, and Videos from all major
+						platforms.
 					</p>
 				</div>
 
@@ -161,81 +145,94 @@ export function DownloaderForm() {
 				<Button
 					type='submit'
 					disabled={loading}
-					className='w-full h-11 text-base font-semibold'>
+					className='w-full h-14 text-lg font-bold rounded-xl shadow-lg shadow-primary/20 hover:shadow-primary/30 active:scale-[0.98] transition-all'>
 					{loading ? (
 						<>
-							<Loader2 className='mr-2 h-5 w-5 animate-spin' />
-							Processing...
+							<Loader2 className='mr-2 h-6 w-6 animate-spin' />
+							Processing Video...
 						</>
 					) : (
 						<>
-							<DownloadIcon className='mr-2 h-5 w-5' />
-							Download Video
+							<DownloadIcon className='mr-2 h-6 w-6' />
+							Download Now
 						</>
 					)}
 				</Button>
 
 				{/* Error Alert */}
 				{error && (
-					<Alert variant='destructive'>
-						<AlertCircle className='h-4 w-4' />
-						<AlertDescription>{error}</AlertDescription>
+					<Alert
+						variant='destructive'
+						className='rounded-xl border-2'>
+						<AlertCircle className='h-5 w-5' />
+						<AlertDescription className='font-medium'>
+							{error}
+						</AlertDescription>
 					</Alert>
 				)}
 
 				{/* Success Response */}
 				{response?.success && (
-					<div className='space-y-4 p-6 bg-muted/50 rounded-lg border border-border'>
-						<div className='flex items-center gap-2 text-green-600'>
-							<CheckCircle className='h-5 w-5' />
-							<p className='font-semibold'>
-								Video processed successfully!
+					<div className='space-y-6 p-8 bg-muted/30 rounded-2xl border-2 border-border animate-in fade-in zoom-in-95 duration-500'>
+						<div className='flex items-center gap-3 text-green-600'>
+							<div className='p-1 bg-green-100 rounded-full'>
+								<CheckCircle className='h-6 w-6' />
+							</div>
+							<p className='font-bold text-lg'>
+								Ready for download!
 							</p>
 						</div>
 
 						{response.title && (
-							<div>
-								<p className='text-sm text-muted-foreground mb-1'>
-									Title
+							<div className='space-y-1'>
+								<p className='text-xs font-bold text-muted-foreground uppercase tracking-wider'>
+									Video Title
 								</p>
-								<p className='text-foreground font-medium'>
+								<p className='text-foreground font-semibold line-clamp-2'>
 									{response.title}
 								</p>
 							</div>
 						)}
 
 						{response.thumbnail && (
-							<div>
-								<p className='text-sm text-muted-foreground mb-2'>
-									Thumbnail
+							<div className='space-y-2'>
+								<p className='text-xs font-bold text-muted-foreground uppercase tracking-wider'>
+									Preview
 								</p>
-								<Image
-									src={response.thumbnail}
-									alt='Video thumbnail'
-									width={320}
-									height={180}
-									unoptimized
-									className='w-full max-w-xs rounded-lg'
-								/>
+								<div className='relative aspect-video rounded-xl overflow-hidden border-2 border-border shadow-sm bg-background'>
+									<Image
+										src={response.thumbnail}
+										alt='Video thumbnail'
+										fill
+										unoptimized
+										className='object-cover'
+									/>
+								</div>
 							</div>
 						)}
 
-						{/* Quality Selection */}
+						{/* Quality Selection or Picker Selection */}
 						{response.formats?.length ||
-						response.downloadLinks?.length ? (
-							<div>
-								<label className='block text-sm font-semibold text-foreground mb-3'>
-									Select Quality
+						response.downloadLinks?.length ||
+						response.picker?.length ? (
+							<div className='space-y-3'>
+								<label className='block text-xs font-bold text-muted-foreground uppercase tracking-wider'>
+									{response.picker?.length
+										? "Select Media to Download"
+										: "Select Quality"}
 								</label>
-								<div className='space-y-2'>
+								<div className='grid gap-2'>
 									{(
 										response.formats ||
 										response.downloadLinks ||
+										response.picker ||
 										[]
 									).map(
 										(
-											format: {
+											item: {
 												url: string;
+												thumb?: string;
+												type?: string;
 												quality?: string;
 												size?: string;
 											},
@@ -245,32 +242,53 @@ export function DownloaderForm() {
 												key={idx}
 												type='button'
 												onClick={() =>
-													setSelectedQuality(
-														format.url,
-													)
+													setSelectedQuality(item.url)
 												}
-												className={`w-full p-3 text-left rounded-lg border-2 transition-all ${
-													selectedQuality ===
-													format.url
-														? "border-primary bg-primary/10"
-														: "border-border hover:border-primary/50"
+												className={`w-full p-4 text-left rounded-xl border-2 transition-all group ${
+													selectedQuality === item.url
+														? "border-primary bg-primary/10 shadow-sm"
+														: "border-border bg-background hover:border-primary/50"
 												}`}>
 												<div className='flex items-center justify-between'>
-													<div>
-														<p className='font-medium text-foreground'>
-															{format.quality ||
-																`Quality ${idx + 1}`}
-														</p>
-														{format.size && (
-															<p className='text-xs text-muted-foreground'>
-																{format.size}
-															</p>
+													<div className='flex items-center gap-3'>
+														{item.thumb && (
+															<div className='h-12 w-12 rounded-lg overflow-hidden border border-border shrink-0 relative'>
+																<Image
+																	src={
+																		item.thumb
+																	}
+																	alt=''
+																	fill
+																	unoptimized
+																	className='object-cover'
+																/>
+															</div>
 														)}
+														<div className='space-y-1'>
+															<p className='font-bold text-foreground group-hover:text-primary transition-colors'>
+																{item.quality ||
+																	(item.type
+																		? `Media ${idx + 1} (${item.type})`
+																		: `Media ${idx + 1}`)}
+															</p>
+															{item.size && (
+																<p className='text-xs text-muted-foreground font-medium'>
+																	File size:{" "}
+																	{item.size}
+																</p>
+															)}
+														</div>
 													</div>
-													<div className='w-5 h-5 rounded border-2 border-primary flex items-center justify-center'>
+													<div
+														className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
+															selectedQuality ===
+															item.url
+																? "border-primary bg-primary text-primary-foreground"
+																: "border-muted-foreground/30 group-hover:border-primary/50"
+														}`}>
 														{selectedQuality ===
-															format.url && (
-															<div className='w-3 h-3 rounded bg-primary' />
+															item.url && (
+															<CheckCircle className='w-4 h-4' />
 														)}
 													</div>
 												</div>
@@ -281,17 +299,8 @@ export function DownloaderForm() {
 							</div>
 						) : null}
 
-						{/* Download Link Direct */}
-						{response.downloadLink && !response.formats && (
-							<div>
-								<p className='text-sm text-muted-foreground mb-2'>
-									Quality: {response.quality}
-								</p>
-							</div>
-						)}
-
 						{/* Action Buttons */}
-						<div className='flex gap-3 pt-4'>
+						<div className='flex flex-col sm:flex-row gap-3 pt-2'>
 							<Button
 								onClick={() =>
 									handleDownload(
@@ -303,9 +312,9 @@ export function DownloaderForm() {
 								disabled={
 									!selectedQuality && !response.downloadLink
 								}
-								className='flex-1'>
+								className='flex-1 h-14 text-base font-bold rounded-xl shadow-md'>
 								<DownloadIcon className='mr-2 h-5 w-5' />
-								Download
+								Download Video
 							</Button>
 							<Button
 								variant='outline'
@@ -313,7 +322,7 @@ export function DownloaderForm() {
 								disabled={
 									!selectedQuality && !response.downloadLink
 								}
-								className='flex-1'>
+								className='flex-1 h-14 text-base font-bold rounded-xl border-2'>
 								<Copy className='mr-2 h-5 w-5' />
 								Copy Link
 							</Button>

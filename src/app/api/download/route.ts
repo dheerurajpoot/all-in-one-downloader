@@ -1,18 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// Using RapidAPI's video download service
-const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || "demo";
+// IMPORTANT: Set your RapidAPI key in your environment variables as RAPIDAPI_KEY
+const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
 const RAPIDAPI_HOST = "social-media-video-downloader.p.rapidapi.com";
 
 export async function POST(request: NextRequest) {
 	try {
 		const body = await request.json();
-		const { url, platform } = body;
+		const { url } = body;
 
-		if (!url || !platform) {
+		if (!url) {
 			return NextResponse.json(
-				{ error: "URL and platform are required" },
+				{ error: "URL is required" },
 				{ status: 400 },
+			);
+		}
+
+		if (!RAPIDAPI_KEY) {
+			console.error(
+				"[Downloader] Missing RAPIDAPI_KEY environment variable",
+			);
+			return NextResponse.json(
+				{ error: "Server configuration error: Missing API Key." },
+				{ status: 500 },
 			);
 		}
 
@@ -25,28 +35,29 @@ export async function POST(request: NextRequest) {
 			);
 		}
 
-		// Call RapidAPI endpoint
+		// Call RapidAPI - Social Media Video Downloader
 		const options = {
 			method: "POST",
 			headers: {
-				"Content-Type": "application/json",
 				"x-rapidapi-key": RAPIDAPI_KEY,
 				"x-rapidapi-host": RAPIDAPI_HOST,
+				"Content-Type": "application/json",
 			},
 			body: JSON.stringify({ url }),
 		};
 
-		const response = await fetch(
-			`https://${RAPIDAPI_HOST}/download`,
-			options,
-		);
+		const response = await fetch(`https://${RAPIDAPI_HOST}/smvd/get/all`, {
+			method: "POST",
+			headers: options.headers,
+			body: options.body,
+		});
 
 		if (!response.ok) {
 			const errorData = await response.json().catch(() => ({}));
-			console.error("[v0] API Error:", errorData);
+			console.error("[Downloader] RapidAPI Error:", errorData);
 			return NextResponse.json(
 				{
-					error: "Failed to process video. The URL might be invalid or the video is unavailable.",
+					error: "Failed to process video. The URL might be invalid or the service is down.",
 				},
 				{ status: response.status },
 			);
@@ -54,65 +65,39 @@ export async function POST(request: NextRequest) {
 
 		const data = await response.json();
 
-		// Format response based on platform
-		const formattedData = formatResponse(data, platform);
+		if (!data || !data.success) {
+			return NextResponse.json(
+				{
+					error:
+						data?.message || "Failed to extract video information.",
+				},
+				{ status: 400 },
+			);
+		}
+
+		// Format the RapidAPI response for our frontend
+		// This API typically returns title, thumbnail, and a list of links (quality/url)
+		const formattedData = {
+			success: true,
+			title: data.title || "Downloaded Video",
+			thumbnail: data.thumbnail || "",
+			downloadLink: data.links?.[0]?.link || data.url,
+			formats:
+				data.links?.map(
+					(l: { quality: string; link: string; size?: string }) => ({
+						quality: l.quality,
+						url: l.link,
+						size: l.size,
+					}),
+				) || [],
+		};
 
 		return NextResponse.json(formattedData);
 	} catch (error) {
-		console.error("[v0] Download API Error:", error);
+		console.error("[Downloader] Global Error:", error);
 		return NextResponse.json(
-			{
-				error: "An error occurred while processing your request. Please try again.",
-			},
+			{ error: "An unexpected error occurred. Please try again." },
 			{ status: 500 },
 		);
 	}
-}
-
-function formatResponse(data: Record<string, unknown>, platform: string) {
-	// Handle different API response formats
-	if (data.error) {
-		return {
-			error: data.error,
-			success: false,
-		};
-	}
-
-	// YouTube format
-	if (platform === "youtube") {
-		return {
-			success: true,
-			title: data.title || "Video",
-			thumbnail: data.thumbnail || "",
-			formats: data.formats || [],
-			downloadLinks: data.links || [],
-		};
-	}
-
-	// Instagram format
-	if (platform === "instagram") {
-		return {
-			success: true,
-			title: "Instagram Video",
-			formats: data.formats || [],
-			downloadLink: data.download_link || data.url || "",
-			quality: data.quality || "HD",
-		};
-	}
-
-	// Facebook format
-	if (platform === "facebook") {
-		return {
-			success: true,
-			title: "Facebook Video",
-			formats: data.formats || [],
-			downloadLink: data.download_link || data.url || "",
-			quality: data.quality || "HD",
-		};
-	}
-
-	return {
-		success: true,
-		data: data,
-	};
 }
