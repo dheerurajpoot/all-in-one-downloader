@@ -51,20 +51,87 @@ export async function POST(request: NextRequest) {
 			`[Downloader] Detected Platform: ${platform} for URL: ${videoUrl}`,
 		);
 
-		// --- STRATEGY 1: YouTube (Prioritize Cobalt for downloadable links) ---
+		// --- STRATEGY 1: YouTube ---
 		if (platform === "youtube") {
-			try {
-				console.log("[Downloader] Trying Cobalt for YouTube...");
-				const ytInstances = [
-					"https://cobalt.meowing.de/",
-					"https://cobalt.qwedl.com/",
-					"https://cobalt.draco.sh/",
-					"https://cobalt-backend.canine.tools/",
-				];
+			const videoId = videoUrl.includes("v=")
+				? videoUrl.split("v=")[1].split("&")[0]
+				: videoUrl.split("/").pop();
 
-				for (const instance of ytInstances) {
-					try {
-						const response = await fetchWithTimeout(instance, {
+			try {
+				// 1. Try youtubei.js first for metadata (very reliable for info)
+				if (videoId) {
+					const youtube = await Innertube.create();
+					const info = await youtube.getInfo(videoId);
+					const formats = [
+						...(info.streaming_data?.formats || []),
+						...(info.streaming_data?.adaptive_formats || []),
+					];
+
+					if (formats.length > 0) {
+						const title = info.basic_info.title || "YouTube Video";
+						const bestFormat = info.chooseFormat({
+							type: "video+audio",
+							quality: "best",
+						});
+						const primaryUrl =
+							bestFormat?.url || formats[0].url || "";
+						const isPrimaryGoogleVideo =
+							primaryUrl.includes("googlevideo.com");
+
+						return NextResponse.json({
+							success: true,
+							title: title,
+							thumbnail:
+								info.basic_info.thumbnail?.[0]?.url || "",
+							downloadLink: isPrimaryGoogleVideo
+								? `/api/proxy?url=${encodeURIComponent(primaryUrl)}&title=${encodeURIComponent(title)}&type=youtube&id=${videoId}&platform=youtube`
+								: `/api/proxy?url=${encodeURIComponent(primaryUrl)}&title=${encodeURIComponent(title)}&platform=youtube`,
+							formats: formats
+								.filter((f: any) => f.url)
+								.map((f: any) => {
+									const isGoogleVideo =
+										f.url.includes("googlevideo.com");
+									const proxyUrl = `/api/proxy?url=${encodeURIComponent(f.url)}&title=${encodeURIComponent(title)}&type=youtube&id=${videoId}&platform=youtube`;
+									return {
+										quality:
+											f.quality_label ||
+											f.quality ||
+											`${f.width}p`,
+										url: isGoogleVideo
+											? proxyUrl
+											: `/api/proxy?url=${encodeURIComponent(f.url)}&title=${encodeURIComponent(title)}&platform=youtube`,
+										size: f.content_length
+											? `${(Number(f.content_length) / 1048576).toFixed(2)} MB`
+											: undefined,
+									};
+								}),
+						});
+					}
+				}
+			} catch (e) {
+				console.error(
+					"[Downloader] YouTube youtubei.js Info Failed:",
+					e,
+				);
+			}
+
+			// 2. Fallback to Cobalt for YouTube if youtubei.js fails
+			const ytInstances = [
+				"https://cobalt.meowing.de/",
+				"https://cobalt.qwedl.com/",
+				"https://cobalt.draco.sh/",
+				"https://cobalt-backend.canine.tools/",
+				"https://cobalt.v07.me/",
+				"https://cobalt.api.unblocked.lol/",
+				"https://cobalt.api.3kh0.net/",
+				"https://cobalt.tools/",
+			];
+
+			for (const instance of ytInstances) {
+				try {
+					const response = await fetchWithTimeout(
+						instance,
+						{
 							method: "POST",
 							headers: {
 								"Content-Type": "application/json",
@@ -73,156 +140,118 @@ export async function POST(request: NextRequest) {
 							body: JSON.stringify({
 								url: videoUrl,
 								videoQuality: "720",
-								audioFormat: "mp3",
 								downloadMode: "auto",
 							}),
-						});
-						if (response.ok) {
-							const data = await response.json();
-							if (data.status !== "error" && data.url) {
-								return NextResponse.json({
-									success: true,
-									title: data.text || "YouTube Video",
-									downloadLink: data.url,
-									picker: data.picker || [],
-								});
-							}
-						}
-					} catch (err) {
-						continue;
-					}
-				}
-
-				// If Cobalt fails, try a direct YT-DLP based API which is often more stable than youtubei.js
-				try {
-					console.log("[Downloader] Trying alternate YouTube API...");
-					const altRes = await fetchWithTimeout(
-						`https://api.v07.me/api/yt/info?url=${encodeURIComponent(videoUrl)}`,
-						{},
-						10000,
+						},
+						5000,
 					);
-					const altData = await altRes.json();
-					if (altData && altData.url) {
-						return NextResponse.json({
-							success: true,
-							title: altData.title || "YouTube Video",
-							thumbnail: altData.thumbnail || "",
-							downloadLink: altData.url,
-							formats: [
-								{
-									quality: "Best Quality",
-									url: altData.url,
-								},
-							],
-						});
+					if (response.ok) {
+						const data = await response.json();
+						if (data.status !== "error" && data.url) {
+							return NextResponse.json({
+								success: true,
+								title: data.text || "YouTube Video",
+								downloadLink: `/api/proxy?url=${encodeURIComponent(data.url)}&title=${encodeURIComponent(data.text || "video")}&type=youtube&id=${videoId}&platform=youtube`,
+								picker: data.picker || [],
+							});
+						}
 					}
 				} catch {
-					/* ignore and try next */
-				}
-
-				// If everything else fails, try youtubei.js but warn about potential 403
-				console.log(
-					"[Downloader] Alternate APIs failed, falling back to youtubei.js...",
-				);
-				const youtube = await Innertube.create();
-				const videoId = videoUrl.includes("v=")
-					? videoUrl.split("v=")[1].split("&")[0]
-					: videoUrl.split("/").pop();
-
-				if (!videoId) throw new Error("Could not extract Video ID");
-
-				const info = await youtube.getInfo(videoId);
-				const formats = [
-					...(info.streaming_data?.formats || []),
-					...(info.streaming_data?.adaptive_formats || []),
-				];
-
-				if (formats.length > 0) {
-					const bestFormat = info.chooseFormat({
-						type: "video+audio",
-						quality: "best",
-					});
-					const primaryUrl = bestFormat?.url || formats[0].url || "";
-					const isPrimaryGoogleVideo =
-						primaryUrl.includes("googlevideo.com");
-					const title = info.basic_info.title || "video";
-
-					return NextResponse.json({
-						success: true,
-						title: title,
-						thumbnail: info.basic_info.thumbnail?.[0]?.url || "",
-						downloadLink: isPrimaryGoogleVideo
-							? `/api/proxy?url=${encodeURIComponent(primaryUrl)}&title=${encodeURIComponent(title)}`
-							: primaryUrl,
-						formats: formats
-							.filter((f: any) => f.url)
-							.map((f: any) => {
-								const isGoogleVideo =
-									f.url.includes("googlevideo.com");
-								const proxyUrl = `/api/proxy?url=${encodeURIComponent(f.url)}&title=${encodeURIComponent(info.basic_info.title || "video")}`;
-								return {
-									quality:
-										f.quality_label ||
-										f.quality ||
-										`${f.width}p`,
-									url: isGoogleVideo ? proxyUrl : f.url,
-									size: f.content_length
-										? `${(Number(f.content_length) / 1048576).toFixed(2)} MB`
-										: undefined,
-								};
-							}),
-					});
-				}
-			} catch (e) {
-				console.error("[Downloader] YouTube Strategy Failed:", e);
-				// Final safety net: FabDL
-				try {
-					const ytApi = await fetchWithTimeout(
-						`https://api.fabdl.com/youtube/get-video-info?url=${encodeURIComponent(videoUrl)}`,
-						{
-							headers: {
-								"User-Agent":
-									"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-							},
-						},
-					);
-					const ytData = await ytApi.json();
-					if (ytData.result) {
-						return NextResponse.json({
-							success: true,
-							title: ytData.result.title,
-							thumbnail: ytData.result.image,
-							downloadLink: ytData.result.download_url,
-							formats:
-								ytData.result.links?.map(
-									(l: {
-										label: string;
-										url: string;
-										size?: string;
-									}) => ({
-										quality: l.label,
-										url: l.url,
-										size: l.size,
-									}),
-								) || [],
-						});
-					}
-				} catch (fallbackError) {
-					console.error(
-						"[Downloader] YouTube Fallback Failed:",
-						fallbackError,
-					);
+					continue;
 				}
 			}
 		}
 
-		// --- STRATEGY 2: Instagram, Facebook, TikTok (TikWM) ---
-		// This is a free, no-key API that is currently very stable for these platforms.
+		// --- STRATEGY 2: Instagram, Facebook, TikTok (Prioritize Cobalt/TikWM) ---
 		if (
 			platform === "instagram" ||
 			platform === "facebook" ||
 			platform === "tiktok"
 		) {
+			try {
+				console.log(`[Downloader] Trying Cobalt for ${platform}...`);
+				const instances = [
+					"https://cobalt.meowing.de/",
+					"https://cobalt.qwedl.com/",
+					"https://cobalt.draco.sh/",
+					"https://cobalt-backend.canine.tools/",
+					"https://cobalt.v07.me/",
+					"https://cobalt.api.unblocked.lol/",
+				];
+
+				for (const instance of instances) {
+					try {
+						const response = await fetchWithTimeout(
+							instance,
+							{
+								method: "POST",
+								headers: {
+									"Content-Type": "application/json",
+									Accept: "application/json",
+								},
+								body: JSON.stringify({
+									url: videoUrl,
+									videoQuality: "1080",
+									downloadMode: "auto",
+								}),
+							},
+							7000,
+						);
+						if (response.ok) {
+							const data = await response.json();
+							if (data.status !== "error" && data.url) {
+								const title =
+									data.text ||
+									`${platform.charAt(0).toUpperCase() + platform.slice(1)} Video`;
+								return NextResponse.json({
+									success: true,
+									title: title,
+									downloadLink: `/api/proxy?url=${encodeURIComponent(data.url)}&title=${encodeURIComponent(title)}&platform=${platform}`,
+									picker: data.picker || [],
+								});
+							}
+						}
+					} catch {
+						continue;
+					}
+				}
+			} catch (e) {
+				console.error(`[Downloader] Cobalt ${platform} Failed:`, e);
+			}
+
+			// Special Fallback for Facebook/Instagram
+			if (platform === "facebook" || platform === "instagram") {
+				try {
+					console.log(
+						`[Downloader] Trying Snapsave/Direct fallback for ${platform}...`,
+					);
+					const snapsaveRes = await fetchWithTimeout(
+						`https://api.v07.me/api/${platform}/info?url=${encodeURIComponent(videoUrl)}`,
+						{},
+						10000,
+					);
+					const snapsaveData = await snapsaveRes.json();
+					if (snapsaveData && snapsaveData.url) {
+						const title = snapsaveData.title || `${platform} Video`;
+						return NextResponse.json({
+							success: true,
+							title: title,
+							thumbnail: snapsaveData.thumbnail || "",
+							downloadLink: `/api/proxy?url=${encodeURIComponent(snapsaveData.url)}&title=${encodeURIComponent(title)}&platform=${platform}`,
+							formats: [
+								{
+									quality: "HD",
+									url: `/api/proxy?url=${encodeURIComponent(snapsaveData.url)}&title=${encodeURIComponent(title)}&platform=${platform}`,
+								},
+							],
+						});
+					}
+				} catch {
+					/* ignore */
+				}
+			}
+
+			// Fallback to TikWM for these platforms
 			try {
 				const tikwmRes = await fetchWithTimeout(
 					`https://www.tikwm.com/api/?url=${encodeURIComponent(videoUrl)}`,
@@ -231,15 +260,41 @@ export async function POST(request: NextRequest) {
 
 				if (tikwmData.code === 0 && tikwmData.data) {
 					const data = tikwmData.data;
+					const title =
+						data.title ||
+						`${platform.charAt(0).toUpperCase() + platform.slice(1)} Video`;
+					const bestUrl =
+						data.hdplay ||
+						data.play ||
+						data.wmplay ||
+						(data.images ? data.images[0] : "");
+
 					return NextResponse.json({
 						success: true,
-						title:
-							data.title ||
-							`${platform.charAt(0).toUpperCase() + platform.slice(1)} Video`,
+						title: title,
 						thumbnail: data.cover || "",
-						downloadLink: data.play || data.hdplay || data.wmplay,
-						status: "stream",
-						quality: data.hdplay ? "HD" : "SD",
+						downloadLink: bestUrl
+							? `/api/proxy?url=${encodeURIComponent(bestUrl)}&title=${encodeURIComponent(title)}&platform=${platform}`
+							: "",
+						formats: data.images
+							? data.images.map((img: string, i: number) => ({
+									quality: `Image ${i + 1}`,
+									url: `/api/proxy?url=${encodeURIComponent(img)}&title=${encodeURIComponent(title + " Image " + (i + 1))}&platform=${platform}`,
+								}))
+							: [
+									{
+										quality: "HD Video",
+										url: data.hdplay
+											? `/api/proxy?url=${encodeURIComponent(data.hdplay)}&title=${encodeURIComponent(title)}&platform=${platform}`
+											: "",
+									},
+									{
+										quality: "SD Video",
+										url: data.play
+											? `/api/proxy?url=${encodeURIComponent(data.play)}&title=${encodeURIComponent(title)}&platform=${platform}`
+											: "",
+									},
+								].filter((f) => f.url),
 					});
 				}
 			} catch (e) {
@@ -248,7 +303,7 @@ export async function POST(request: NextRequest) {
 		}
 
 		// --- STRATEGY 3: Universal Fallback (Any4K / Cobalt) ---
-		// Fallback A: Any4K (with more parameters to avoid validation errors)
+		// Fallback A: Any4K
 		try {
 			const any4kRes = await fetchWithTimeout(
 				"https://api.any4k.com/v1/dlp/check",
@@ -260,7 +315,7 @@ export async function POST(request: NextRequest) {
 						lang: "en",
 						country: "US",
 						platform: "Web",
-						deviceId: "12345678901234567890123456789012", // 32 chars
+						deviceId: "12345678901234567890123456789012",
 						sysVer: "10",
 						appVer: "1.0.0",
 						bundleId: "com.any4k.web",
@@ -275,26 +330,20 @@ export async function POST(request: NextRequest) {
 					title: d.title || "Video",
 					thumbnail: d.thumbnail || "",
 					downloadLink: d.download?.[0]?.url || d.raw_video?.[0]?.url,
-					formats: d.download?.map(
-						(f: {
-							res_text: string;
-							url: string;
-							filesize?: number;
-						}) => ({
-							quality: f.res_text,
-							url: f.url,
-							size: f.filesize
-								? `${(f.filesize / 1048576).toFixed(2)} MB`
-								: undefined,
-						}),
-					),
+					formats: d.download?.map((f: any) => ({
+						quality: f.res_text,
+						url: f.url,
+						size: f.filesize
+							? `${(f.filesize / 1048576).toFixed(2)} MB`
+							: undefined,
+					})),
 				});
 			}
 		} catch {
-			/* ignore and try next */
+			/* ignore */
 		}
 
-		// Fallback B: Cobalt Rotation (Updated instances and parameters for V10)
+		// Fallback B: Universal Cobalt
 		const instances = [
 			"https://cobalt.meowing.de/",
 			"https://cobalt.qwedl.com/",
@@ -312,7 +361,6 @@ export async function POST(request: NextRequest) {
 					body: JSON.stringify({
 						url: videoUrl,
 						videoQuality: "720",
-						audioFormat: "mp3",
 						downloadMode: "auto",
 					}),
 				});
@@ -351,8 +399,13 @@ function detectPlatform(url: string): string | null {
 	const lowerUrl = url.toLowerCase();
 	if (lowerUrl.includes("youtube.com") || lowerUrl.includes("youtu.be"))
 		return "youtube";
-	if (lowerUrl.includes("instagram.com")) return "instagram";
-	if (lowerUrl.includes("facebook.com") || lowerUrl.includes("fb.watch"))
+	if (lowerUrl.includes("instagram.com") || lowerUrl.includes("instagr.am"))
+		return "instagram";
+	if (
+		lowerUrl.includes("facebook.com") ||
+		lowerUrl.includes("fb.watch") ||
+		lowerUrl.includes("fb.com")
+	)
 		return "facebook";
 	if (lowerUrl.includes("tiktok.com")) return "tiktok";
 	if (lowerUrl.includes("twitter.com") || lowerUrl.includes("x.com"))
