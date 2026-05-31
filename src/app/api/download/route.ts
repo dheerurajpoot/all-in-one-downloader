@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
 			// --format: best: get the best quality format
 
 			let ytDlpCommand = `yt-dlp --dump-json --no-playlist --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"`;
+
 			// Add specific workarounds for YouTube to bypass bot detection
 			if (platform === "youtube") {
 				ytDlpCommand += ` --extractor-args "youtube:player_client=android_vr,ios"`;
