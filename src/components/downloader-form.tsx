@@ -14,6 +14,7 @@ import {
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Alert, AlertDescription } from "./ui/alert";
+import { useToast } from "./ui/use-toast";
 
 interface DownloadResponse {
 	success: boolean;
@@ -39,6 +40,7 @@ interface DownloadResponse {
 }
 
 export function DownloaderForm() {
+	const { toast } = useToast();
 	const [url, setUrl] = useState("");
 	const [loading, setLoading] = useState(false);
 	const [response, setResponse] = useState<DownloadResponse | null>(null);
@@ -51,7 +53,8 @@ export function DownloaderForm() {
 		setResponse(null);
 		setSelectedQuality("");
 
-		if (!url.trim()) {
+		const trimmedUrl = url.trim().replace(/[`"'\s]/g, "");
+		if (!trimmedUrl) {
 			setError("Please enter a valid URL");
 			return;
 		}
@@ -62,17 +65,32 @@ export function DownloaderForm() {
 			const res = await fetch("/api/download", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ url: url.trim() }),
+				body: JSON.stringify({ url: trimmedUrl }),
 			});
 
 			const data = await res.json();
 
 			if (!res.ok || !data.success) {
-				setError(data.error || "Failed to process video");
+				const errorMessage = data.error || "Failed to process video";
+				const details =
+					data.details?.message || data.details?.error || "";
+				const fullError = details
+					? `${errorMessage}: ${details}`
+					: errorMessage;
+				setError(fullError);
+				toast({
+					title: "Error",
+					description: fullError,
+					variant: "destructive",
+				});
 				return;
 			}
 
 			setResponse(data);
+			toast({
+				title: "Success",
+				description: "Video information retrieved successfully!",
+			});
 
 			// Set default quality selection
 			if (data.formats && data.formats.length > 0) {
@@ -83,7 +101,13 @@ export function DownloaderForm() {
 				setSelectedQuality(data.downloadLinks[0].url);
 			}
 		} catch (err) {
-			setError("An error occurred. Please try again.");
+			const msg = "An error occurred while connecting to the server.";
+			setError(msg);
+			toast({
+				title: "Connection Error",
+				description: msg,
+				variant: "destructive",
+			});
 			console.error("[Downloader] Error:", err);
 		} finally {
 			setLoading(false);
@@ -92,6 +116,11 @@ export function DownloaderForm() {
 
 	const handleDownload = (downloadUrl: string) => {
 		if (!downloadUrl) return;
+
+		toast({
+			title: "Download Started",
+			description: "Your video should start downloading in a new tab.",
+		});
 
 		// Open download link in new tab
 		const link = document.createElement("a");
@@ -107,6 +136,10 @@ export function DownloaderForm() {
 		const linkToCopy = selectedQuality || response?.downloadLink;
 		if (linkToCopy) {
 			navigator.clipboard.writeText(linkToCopy);
+			toast({
+				title: "Copied!",
+				description: "Download link copied to clipboard.",
+			});
 		}
 	};
 
