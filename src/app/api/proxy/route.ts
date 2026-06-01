@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Innertube } from "youtubei.js";
 
 export async function GET(request: NextRequest) {
 	const url = request.nextUrl.searchParams.get("url");
 	const title = request.nextUrl.searchParams.get("title") || "video";
+	const type = request.nextUrl.searchParams.get("type"); // 'thumbnail' or null
 
 	if (!url) {
 		return NextResponse.json({ error: "URL is required" }, { status: 400 });
@@ -28,38 +28,60 @@ export async function GET(request: NextRequest) {
 			origin = "https://www.youtube.com";
 		}
 
-		console.log(`[Proxy] Fetching: ${url.substring(0, 50)}...`);
-		
+		console.log(
+			`[Proxy] Fetching ${type || "video"}: ${url.substring(0, 50)}...`,
+		);
+
 		const response = await fetch(url, {
 			headers: {
 				"User-Agent":
 					"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-				Accept: "*/*",
+				Accept:
+					type === "thumbnail"
+						? "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
+						: "*/*",
 				"Accept-Language": "en-US,en;q=0.9",
 				Connection: "keep-alive",
 				Referer: referer,
 				Origin: origin,
+				"Sec-Fetch-Dest": type === "thumbnail" ? "image" : "video",
+				"Sec-Fetch-Mode": "no-cors",
+				"Sec-Fetch-Site": "cross-site",
 			},
 		});
 
 		if (!response.ok) {
-			console.error(`[Proxy] Fetch failed with status ${response.status}`);
+			console.error(
+				`[Proxy] Fetch failed with status ${response.status}`,
+			);
 			return NextResponse.json(
-				{ error: "Failed to fetch video from remote servers" },
+				{
+					error: `Failed to fetch ${type || "video"} from remote servers`,
+				},
 				{ status: response.status },
 			);
 		}
 
 		const headers = new Headers();
-		headers.set(
-			"Content-Disposition",
-			`attachment; filename="${encodeURIComponent(title)}.mp4"`,
-		);
-		headers.set(
-			"Content-Type",
-			response.headers.get("Content-Type") || "video/mp4",
-		);
-		
+
+		if (type === "thumbnail") {
+			headers.set(
+				"Content-Type",
+				response.headers.get("Content-Type") || "image/jpeg",
+			);
+			// Cache thumbnails for 24 hours
+			headers.set("Cache-Control", "public, max-age=86400");
+		} else {
+			headers.set(
+				"Content-Disposition",
+				`attachment; filename="${encodeURIComponent(title)}.mp4"`,
+			);
+			headers.set(
+				"Content-Type",
+				response.headers.get("Content-Type") || "video/mp4",
+			);
+		}
+
 		const contentLength = response.headers.get("Content-Length");
 		if (contentLength) {
 			headers.set("Content-Length", contentLength);

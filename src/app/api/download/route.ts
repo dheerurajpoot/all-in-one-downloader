@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import { promisify } from "util";
 import path from "path";
 import fs from "fs";
 
-const execPromise = promisify(exec);
+const execFilePromise = promisify(execFile);
 
 export async function POST(request: NextRequest) {
 	try {
@@ -61,21 +61,43 @@ export async function POST(request: NextRequest) {
 			// Using yt-dlp to get video information
 			// --dump-json: output metadata as JSON
 			// --no-playlist: only get information for the video, not the whole playlist
-			// --format: best: get the best quality format
 
-			let ytDlpCommand = `${binaryToUse} --dump-json --no-playlist --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"`;
+			let ytDlpArgs = [
+				"--dump-json",
+				"--no-playlist",
+				"--user-agent",
+				"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+			];
 
-			// Add specific workarounds for YouTube to bypass bot detection
+			// Add specific workarounds based on platform
 			if (platform === "youtube") {
 				// Use multiple clients and skip webpage to bypass bot detection
-				// android_vr and ios are currently the most reliable clients
-				ytDlpCommand += ` --extractor-args "youtube:player_client=android_vr,ios,mweb" --no-check-certificates --geo-bypass --force-ipv4`;
+				ytDlpArgs.push(
+					"--extractor-args",
+					"youtube:player_client=tv,android,ios,web_embedded",
+					"--no-check-certificates",
+					"--geo-bypass",
+					"--force-ipv4",
+				);
+			} else if (platform === "instagram") {
+				// Instagram specific arguments
+				ytDlpArgs.push(
+					"--extractor-args",
+					"instagram:client=android",
+					"--add-header",
+					"Referer:https://www.instagram.com/",
+					"--add-header",
+					"Origin:https://www.instagram.com",
+					"--no-check-certificates",
+				);
 			}
 
-			ytDlpCommand += ` "${videoUrl}"`;
+			// Add the URL as the last argument
+			ytDlpArgs.push(videoUrl);
 
-			const { stdout, stderr } = await execPromise(
-				ytDlpCommand,
+			const { stdout, stderr } = await execFilePromise(
+				binaryToUse,
+				ytDlpArgs,
 				{ timeout: 30000, maxBuffer: 10 * 1024 * 1024 }, // 30s timeout, 10MB buffer
 			);
 
@@ -86,7 +108,12 @@ export async function POST(request: NextRequest) {
 
 			const info = JSON.parse(stdout);
 			const title = info.title || "Video";
-			const thumbnail = info.thumbnail || info.thumbnails?.[0]?.url || "";
+			let thumbnail = info.thumbnail || info.thumbnails?.[0]?.url || "";
+
+			// Proxy thumbnails for platforms that block hotlinking (Instagram, Facebook)
+			if (platform === "instagram" || platform === "facebook") {
+				thumbnail = `/api/proxy?url=${encodeURIComponent(thumbnail)}&platform=${platform}&type=thumbnail`;
+			}
 
 			// Filter formats to get useful ones
 			// We prefer formats with both video and audio, or the best available
@@ -147,10 +174,17 @@ export async function POST(request: NextRequest) {
 
 			let errorMessage = "Failed to process video with yt-dlp.";
 			if (
-				ytError.message?.includes("Sign in to confirm you’re not a bot")
+				ytError.message?.includes(
+					"Sign in to confirm you’re not a bot",
+				) ||
+				ytError.message?.includes(
+					"Instagram API is not granting access",
+				)
 			) {
-				errorMessage =
-					"YouTube has blocked this request due to bot detection. This is common in production environments. Try another link or try again later.";
+				const platformName = platform
+					? platform.charAt(0).toUpperCase() + platform.slice(1)
+					: "Platform";
+				errorMessage = `${platformName} has blocked this request due to bot detection or IP restrictions. Try another link or try again later.`;
 			}
 
 			return NextResponse.json(
