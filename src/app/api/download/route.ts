@@ -42,12 +42,19 @@ export async function POST(request: NextRequest) {
 			const localBinaryPath = path.join(process.cwd(), "bin", "yt-dlp");
 			let binaryToUse = "yt-dlp";
 
-			if (fs.existsSync(localBinaryPath)) {
+			// Only use the bundled binary if we are on Linux (Vercel/Production)
+			// On macOS/Windows (Local Dev), we use the system yt-dlp
+			if (
+				process.platform === "linux" &&
+				fs.existsSync(localBinaryPath)
+			) {
 				binaryToUse = localBinaryPath;
-				console.log(`[Downloader] Using local binary: ${binaryToUse}`);
+				console.log(
+					`[Downloader] Using local Linux binary: ${binaryToUse}`,
+				);
 			} else {
 				console.log(
-					`[Downloader] Local binary not found, using system yt-dlp`,
+					`[Downloader] Using system binary (platform: ${process.platform})`,
 				);
 			}
 
