@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";
+import path from "path";
+import fs from "fs";
 
 const execPromise = promisify(exec);
 
@@ -34,12 +36,27 @@ export async function POST(request: NextRequest) {
 		);
 
 		try {
+			// Determine yt-dlp binary path
+			// 1. Check for local binary in bin/ folder (for production/Vercel)
+			// 2. Fallback to system 'yt-dlp' (for localhost)
+			const localBinaryPath = path.join(process.cwd(), "bin", "yt-dlp");
+			let binaryToUse = "yt-dlp";
+
+			if (fs.existsSync(localBinaryPath)) {
+				binaryToUse = localBinaryPath;
+				console.log(`[Downloader] Using local binary: ${binaryToUse}`);
+			} else {
+				console.log(
+					`[Downloader] Local binary not found, using system yt-dlp`,
+				);
+			}
+
 			// Using yt-dlp to get video information
 			// --dump-json: output metadata as JSON
 			// --no-playlist: only get information for the video, not the whole playlist
 			// --format: best: get the best quality format
 
-			let ytDlpCommand = `yt-dlp --dump-json --no-playlist --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"`;
+			let ytDlpCommand = `${binaryToUse} --dump-json --no-playlist --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"`;
 
 			// Add specific workarounds for YouTube to bypass bot detection
 			if (platform === "youtube") {
