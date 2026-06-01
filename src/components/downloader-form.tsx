@@ -227,19 +227,29 @@ export function DownloaderForm() {
 							</div>
 						)}
 
-						{response.thumbnail && (
+						{(response.thumbnail || response.downloadLink || selectedQuality) && (
 							<div className='space-y-2'>
 								<p className='text-xs font-bold text-muted-foreground uppercase tracking-wider'>
 									Preview
 								</p>
 								<div className='relative aspect-video rounded-xl overflow-hidden border-2 border-border shadow-sm bg-background'>
-									<Image
-										src={response.thumbnail}
-										alt='Video thumbnail'
-										fill
-										unoptimized
-										className='object-cover'
-									/>
+									{response.thumbnail ? (
+										<Image
+											src={response.thumbnail}
+											alt='Video thumbnail'
+											fill
+											unoptimized
+											className='object-cover'
+										/>
+									) : (
+										<video
+											src={selectedQuality || response.downloadLink}
+											className='w-full h-full object-cover'
+											controls
+											muted
+											playsInline
+										/>
+									)}
 								</div>
 							</div>
 						)}

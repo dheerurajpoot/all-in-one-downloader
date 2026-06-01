@@ -67,7 +67,9 @@ export async function POST(request: NextRequest) {
 
 			// Add specific workarounds for YouTube to bypass bot detection
 			if (platform === "youtube") {
-				ytDlpCommand += ` --extractor-args "youtube:player_client=android_vr,ios"`;
+				// Use multiple clients and skip webpage to bypass bot detection
+				// android_vr and ios are currently the most reliable clients
+				ytDlpCommand += ` --extractor-args "youtube:player_client=android_vr,ios,mweb" --no-check-certificates --geo-bypass --force-ipv4`;
 			}
 
 			ytDlpCommand += ` "${videoUrl}"`;
@@ -142,9 +144,18 @@ export async function POST(request: NextRequest) {
 			});
 		} catch (ytError: any) {
 			console.error("[Downloader] yt-dlp execution failed:", ytError);
+
+			let errorMessage = "Failed to process video with yt-dlp.";
+			if (
+				ytError.message?.includes("Sign in to confirm you’re not a bot")
+			) {
+				errorMessage =
+					"YouTube has blocked this request due to bot detection. This is common in production environments. Try another link or try again later.";
+			}
+
 			return NextResponse.json(
 				{
-					error: "Failed to process video with yt-dlp.",
+					error: errorMessage,
 					details: ytError.message,
 				},
 				{ status: 500 },
