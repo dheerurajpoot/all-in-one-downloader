@@ -33,6 +33,13 @@ async function getYouTubeInfoFallback(videoId: string) {
 					: undefined,
 			}));
 
+		if (allFormats.length === 0) {
+			console.log(
+				`[Downloader] youtubei.js returned no formats for ${videoId}`,
+			);
+			return null;
+		}
+
 		return {
 			success: true,
 			title,
@@ -46,6 +53,51 @@ async function getYouTubeInfoFallback(videoId: string) {
 	}
 }
 
+// Helper for YouTube Fallback using Invidious API
+async function getInvidiousFallback(videoId: string) {
+	const instances = [
+		"https://invidious.snopyta.org",
+		"https://yewtu.be",
+		"https://invidious.kavin.rocks",
+		"https://vid.puffyan.us",
+		"https://inv.riverside.rocks",
+		"https://invidious.namazso.eu",
+	];
+
+	for (const instance of instances) {
+		try {
+			console.log(
+				`[Downloader] Attempting Invidious fallback via: ${instance}`,
+			);
+			const res = await fetch(`${instance}/api/v1/videos/${videoId}`, {
+				signal: AbortSignal.timeout(5000),
+			});
+			if (res.ok) {
+				const data = await res.json();
+				if (data.formatStreams && data.formatStreams.length > 0) {
+					const title = data.title || "YouTube Video";
+					const formats = data.formatStreams.map((f: any) => ({
+						quality: f.qualityLabel || f.quality || "Video",
+						url: `/api/proxy?url=${encodeURIComponent(f.url)}&title=${encodeURIComponent(title)}&platform=youtube`,
+						size: f.size,
+					}));
+
+					return {
+						success: true,
+						title,
+						thumbnail: data.videoThumbnails?.[0]?.url || "",
+						downloadLink: formats[0].url,
+						formats,
+					};
+				}
+			}
+		} catch (e) {
+			continue;
+		}
+	}
+	return null;
+}
+
 // Helper for Universal Fallback using public Cobalt API
 async function getCobaltFallback(videoUrl: string) {
 	const instances = [
@@ -53,6 +105,8 @@ async function getCobaltFallback(videoUrl: string) {
 		"https://cobalt.qwedl.com/",
 		"https://cobalt.draco.sh/",
 		"https://cobalt.api.3kh0.net/",
+		"https://cobalt-backend.canine.tools/",
+		"https://cobalt.v07.me/",
 	];
 
 	for (const instance of instances) {
@@ -222,7 +276,13 @@ export async function POST(request: NextRequest) {
 						if (fallbackData)
 							return NextResponse.json(fallbackData);
 
-						// Fallback 2: Cobalt API
+						// Fallback 2: Invidious API (Very reliable for metadata)
+						const invidiousData =
+							await getInvidiousFallback(videoId);
+						if (invidiousData)
+							return NextResponse.json(invidiousData);
+
+						// Fallback 3: Cobalt API
 						const cobaltData = await getCobaltFallback(videoUrl);
 						if (cobaltData) return NextResponse.json(cobaltData);
 					}
