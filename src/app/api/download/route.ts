@@ -71,13 +71,17 @@ export async function POST(request: NextRequest) {
 
 			// Add specific workarounds based on platform
 			if (platform === "youtube") {
-				// Use multiple clients and skip webpage to bypass bot detection
+				// Use mobile clients and skip webpage fetch to bypass bot detection on server IPs
+				// android and ios are currently the most reliable for bypassing 'Sign in to confirm you're not a bot'
 				ytDlpArgs.push(
 					"--extractor-args",
-					"youtube:player_client=tv,android,ios,web_embedded",
+					"youtube:player_client=android,ios;player_skip=webpage",
 					"--no-check-certificates",
 					"--geo-bypass",
 					"--force-ipv4",
+					"--no-cache-dir",
+					"--add-header",
+					"Accept-Language: en-US,en;q=0.9",
 				);
 			} else if (platform === "instagram") {
 				// Instagram specific arguments
