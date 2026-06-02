@@ -37,45 +37,49 @@ export async function POST(request: NextRequest) {
 
 		try {
 			// Determine yt-dlp binary path
-			// 1. Check for local binary in bin/ folder (for production/Vercel)
-			// 2. Fallback to system 'yt-dlp' (for localhost)
 			const localBinaryPath = path.join(process.cwd(), "bin", "yt-dlp");
 			let binaryToUse = "yt-dlp";
 
-			// Only use the bundled binary if we are on Linux (Vercel/Production)
-			// On macOS/Windows (Local Dev), we use the system yt-dlp
 			if (
 				process.platform === "linux" &&
 				fs.existsSync(localBinaryPath)
 			) {
 				binaryToUse = localBinaryPath;
-				console.log(
-					`[Downloader] Using local Linux binary: ${binaryToUse}`,
-				);
-			} else {
-				console.log(
-					`[Downloader] Using system binary (platform: ${process.platform})`,
-				);
 			}
 
-			// Using yt-dlp to get video information
-			// --dump-json: output metadata as JSON
-			// --no-playlist: only get information for the video, not the whole playlist
+			// Handle YouTube Cookies if provided via environment variable
+			// This is the most reliable way to bypass "Sign in to confirm you're not a bot"
+			let cookiesPath = "";
+			if (platform === "youtube" && process.env.YOUTUBE_COOKIES) {
+				try {
+					cookiesPath = path.join(
+						"/tmp",
+						`cookies_${Date.now()}.txt`,
+					);
+					fs.writeFileSync(cookiesPath, process.env.YOUTUBE_COOKIES);
+					console.log(
+						`[Downloader] Using cookies from environment variable`,
+					);
+				} catch (err) {
+					console.error(
+						"[Downloader] Failed to write cookies file:",
+						err,
+					);
+				}
+			}
 
-			let ytDlpArgs = [
-				"--dump-json",
-				"--no-playlist",
-				"--user-agent",
-				"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-			];
+			let ytDlpArgs = ["--dump-json", "--no-playlist"];
 
 			// Add specific workarounds based on platform
 			if (platform === "youtube") {
-				// Use mobile clients and skip webpage fetch to bypass bot detection on server IPs
-				// android and ios are currently the most reliable for bypassing 'Sign in to confirm you're not a bot'
+				// Use iOS User-Agent with iOS client for best bypass results
+				const iosUserAgent =
+					"com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X; en_US)";
 				ytDlpArgs.push(
+					"--user-agent",
+					iosUserAgent,
 					"--extractor-args",
-					"youtube:player_client=android,ios;player_skip=webpage",
+					"youtube:player_client=ios,android;player_skip=webpage",
 					"--no-check-certificates",
 					"--geo-bypass",
 					"--force-ipv4",
@@ -83,17 +87,28 @@ export async function POST(request: NextRequest) {
 					"--add-header",
 					"Accept-Language: en-US,en;q=0.9",
 				);
-			} else if (platform === "instagram") {
-				// Instagram specific arguments
+
+				if (cookiesPath) {
+					ytDlpArgs.push("--cookies", cookiesPath);
+				}
+			} else {
+				// Standard User-Agent for other platforms
 				ytDlpArgs.push(
-					"--extractor-args",
-					"instagram:client=android",
-					"--add-header",
-					"Referer:https://www.instagram.com/",
-					"--add-header",
-					"Origin:https://www.instagram.com",
-					"--no-check-certificates",
+					"--user-agent",
+					"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
 				);
+
+				if (platform === "instagram") {
+					ytDlpArgs.push(
+						"--extractor-args",
+						"instagram:client=android",
+						"--add-header",
+						"Referer:https://www.instagram.com/",
+						"--add-header",
+						"Origin:https://www.instagram.com",
+						"--no-check-certificates",
+					);
+				}
 			}
 
 			// Add the URL as the last argument
@@ -104,6 +119,15 @@ export async function POST(request: NextRequest) {
 				ytDlpArgs,
 				{ timeout: 30000, maxBuffer: 10 * 1024 * 1024 }, // 30s timeout, 10MB buffer
 			);
+
+			// Clean up temporary cookies file
+			if (cookiesPath && fs.existsSync(cookiesPath)) {
+				try {
+					fs.unlinkSync(cookiesPath);
+				} catch (err) {
+					/* ignore */
+				}
+			}
 
 			if (stderr && !stdout) {
 				console.error("[Downloader] yt-dlp error:", stderr);
