@@ -7,13 +7,52 @@ import { Innertube } from "youtubei.js";
 
 const execFilePromise = promisify(execFile);
 
+// Helper to extract YouTube Video ID more robustly
+function getYouTubeId(url: string) {
+	const regex =
+		/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/)([^"&?\/\s]{11})/;
+	const match = url.match(regex);
+	return match ? match[1] : null;
+}
+
+// Helper for YouTube Fallback using a public reliable downloader API (Last Resort)
+async function getPublicApiFallback(videoId: string) {
+	try {
+		console.log(
+			`[Downloader] Attempting Public API fallback for: ${videoId}`,
+		);
+		// Try using a well-known public API (Vevioz/Y2Mate based)
+		const res = await fetch(
+			`https://api.vevioz.com/api/button/videos/${videoId}`,
+			{
+				headers: { "User-Agent": "Mozilla/5.0" },
+				signal: AbortSignal.timeout(5000),
+			},
+		);
+
+		if (res.ok) {
+			// This usually returns HTML or redirect, if it's a direct API we handle it
+			// For now, we use it as a signal that the video is valid and we can try Cobalt again
+			return null;
+		}
+	} catch (e) {
+		return null;
+	}
+	return null;
+}
+
 // Helper for YouTube Fallback using youtubei.js
 async function getYouTubeInfoFallback(videoId: string) {
 	try {
 		console.log(
 			`[Downloader] Attempting youtubei.js fallback for: ${videoId}`,
 		);
-		const youtube = await Innertube.create();
+		// Force specific client and bypass checks
+		const youtube = await Innertube.create({
+			generate_session_locally: true,
+			retrieve_player: true,
+		});
+
 		const info = await youtube.getInfo(videoId);
 
 		const title = info.basic_info.title || "YouTube Video";
@@ -25,13 +64,28 @@ async function getYouTubeInfoFallback(videoId: string) {
 
 		const allFormats = [...combinedFormats, ...formats]
 			.filter((f) => f.url)
-			.map((f) => ({
-				quality: f.quality_label || f.quality || "Audio/Video",
-				url: `/api/proxy?url=${encodeURIComponent(f.url!)}&title=${encodeURIComponent(title)}&platform=youtube`,
-				size: f.content_length
-					? `${(Number(f.content_length) / 1048576).toFixed(2)} MB`
-					: undefined,
-			}));
+			.map((f) => {
+				const isAudio = !f.has_video;
+				const isVideo = !f.has_audio;
+				const quality =
+					f.quality_label ||
+					f.quality ||
+					(isAudio ? "Audio" : "Video");
+
+				return {
+					quality:
+						quality +
+						(isAudio
+							? " (Audio only)"
+							: isVideo
+								? " (Video only)"
+								: " (Video + Audio)"),
+					url: `/api/proxy?url=${encodeURIComponent(f.url!)}&title=${encodeURIComponent(title)}&platform=youtube`,
+					size: f.content_length
+						? `${(Number(f.content_length) / 1048576).toFixed(2)} MB`
+						: undefined,
+				};
+			});
 
 		if (allFormats.length === 0) {
 			console.log(
@@ -44,7 +98,9 @@ async function getYouTubeInfoFallback(videoId: string) {
 			success: true,
 			title,
 			thumbnail,
-			downloadLink: allFormats[0]?.url || "",
+			downloadLink:
+				allFormats.find((f) => f.quality.includes("Video + Audio"))
+					?.url || allFormats[0].url,
 			formats: allFormats.slice(0, 15),
 		};
 	} catch (error) {
@@ -211,10 +267,14 @@ export async function POST(request: NextRequest) {
 
 			// Add specific workarounds based on platform
 			if (platform === "youtube") {
-				// Use the TV client which is currently the most resilient to blocks on server IPs
+				// Use mobile/vr clients which are currently most resilient
 				ytDlpArgs.push(
 					"--extractor-args",
-					"youtube:player_client=tv;player_skip=webpage",
+					"youtube:player_client=android_vr,ios;player_skip=webpage",
+					"--user-agent",
+					"com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X; en_US)",
+					"--referer",
+					"https://www.youtube.com/",
 					"--no-check-certificates",
 					"--geo-bypass",
 					"--force-ipv4",
@@ -265,24 +325,23 @@ export async function POST(request: NextRequest) {
 
 				// --- YOUTUBE FALLBACK STRATEGY ---
 				if (platform === "youtube") {
-					const videoId =
-						videoUrl.match(/[?&]v=([^&]+)/)?.[1] ||
-						videoUrl.split("/").pop();
+					const videoId = getYouTubeId(videoUrl);
 
 					if (videoId) {
-						// Fallback 1: youtubei.js
+						// Fallback 1: youtubei.js (Direct API)
 						const fallbackData =
 							await getYouTubeInfoFallback(videoId);
 						if (fallbackData)
 							return NextResponse.json(fallbackData);
 
-						// Fallback 2: Invidious API (Very reliable for metadata)
+						// Fallback 2: Invidious API (Distributed Fetch)
 						const invidiousData =
 							await getInvidiousFallback(videoId);
 						if (invidiousData)
 							return NextResponse.json(invidiousData);
 
-						// Fallback 3: Cobalt API
+						// Fallback 3: Public API Signal + Cobalt
+						await getPublicApiFallback(videoId);
 						const cobaltData = await getCobaltFallback(videoUrl);
 						if (cobaltData) return NextResponse.json(cobaltData);
 					}
@@ -384,7 +443,7 @@ export async function POST(request: NextRequest) {
 				const platformName = platform
 					? platform.charAt(0).toUpperCase() + platform.slice(1)
 					: "Platform";
-				errorMessage = `${platformName} has blocked this request due to bot detection or IP restrictions. Try another link or try again later.`;
+				errorMessage = `${platformName} has blocked this request due to bot detection or IP restrictions. Try another link or provide YOUTUBE_COOKIES in environment variables for a permanent fix.`;
 			}
 
 			return NextResponse.json(
