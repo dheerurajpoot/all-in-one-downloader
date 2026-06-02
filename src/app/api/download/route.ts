@@ -51,6 +51,7 @@ async function getYouTubeInfoFallback(videoId: string) {
 		const youtube = await Innertube.create({
 			generate_session_locally: true,
 			retrieve_player: true,
+			location: "US", // Sometimes setting a location helps
 		});
 
 		const info = await youtube.getInfo(videoId);
@@ -58,34 +59,44 @@ async function getYouTubeInfoFallback(videoId: string) {
 		const title = info.basic_info.title || "YouTube Video";
 		const thumbnail = info.basic_info.thumbnail?.[0]?.url || "";
 
-		// Filter and map formats
-		const formats = info.streaming_data?.adaptive_formats || [];
-		const combinedFormats = info.streaming_data?.formats || [];
+		// Try to get streaming data directly if adaptive_formats are empty
+		const streamingData = info.streaming_data;
+		if (!streamingData) {
+			console.log("[Downloader] No streaming data found in youtubei.js");
+			return null;
+		}
 
-		const allFormats = [...combinedFormats, ...formats]
-			.filter((f) => f.url)
-			.map((f) => {
-				const isAudio = !f.has_video;
-				const isVideo = !f.has_audio;
-				const quality =
-					f.quality_label ||
-					f.quality ||
-					(isAudio ? "Audio" : "Video");
+		const formats = streamingData.adaptive_formats || [];
+		const combinedFormats = streamingData.formats || [];
 
-				return {
-					quality:
-						quality +
-						(isAudio
-							? " (Audio only)"
-							: isVideo
-								? " (Video only)"
-								: " (Video + Audio)"),
-					url: `/api/proxy?url=${encodeURIComponent(f.url!)}&title=${encodeURIComponent(title)}&platform=youtube`,
-					size: f.content_length
-						? `${(Number(f.content_length) / 1048576).toFixed(2)} MB`
-						: undefined,
-				};
-			});
+		const allFormats = await Promise.all(
+			[...combinedFormats, ...formats]
+				.filter((f) => f.url || f.signature_cipher || f.cipher)
+				.map(async (f) => {
+					const url =
+						f.url || (await f.decipher(youtube.session.player));
+					const isAudio = !f.has_video;
+					const isVideo = !f.has_audio;
+					const quality =
+						f.quality_label ||
+						f.quality ||
+						(isAudio ? "Audio" : "Video");
+
+					return {
+						quality:
+							quality +
+							(isAudio
+								? " (Audio only)"
+								: isVideo
+									? " (Video only)"
+									: " (Video + Audio)"),
+						url: `/api/proxy?url=${encodeURIComponent(url)}&title=${encodeURIComponent(title)}&platform=youtube`,
+						size: f.content_length
+							? `${(Number(f.content_length) / 1048576).toFixed(2)} MB`
+							: undefined,
+					};
+				}),
+		);
 
 		if (allFormats.length === 0) {
 			console.log(
@@ -342,27 +353,83 @@ export async function POST(request: NextRequest) {
 					const videoId = getYouTubeId(videoUrl);
 
 					if (videoId) {
-						// Fallback 1: youtubei.js (Direct API)
-						const fallbackData =
-							await getYouTubeInfoFallback(videoId);
-						if (fallbackData)
-							return NextResponse.json(fallbackData);
+						// Fallback 0.5: If cookies failed, try one more time with Mobile App Identity (No Cookies)
+						if (cookiesPath) {
+							try {
+								console.log(
+									"[Downloader] Cookie attempt failed, trying Mobile App Identity fallback...",
+								);
+								const noCookieArgs = [
+									"--dump-json",
+									"--no-playlist",
+									"--extractor-args",
+									"youtube:player_client=android_vr,ios;player_skip=webpage",
+									"--user-agent",
+									"com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X; en_US)",
+									"--no-check-certificates",
+									"--geo-bypass",
+									"--force-ipv4",
+									videoUrl,
+								];
+								const result = await execFilePromise(
+									binaryToUse,
+									noCookieArgs,
+									{ timeout: 20000 },
+								);
+								if (result.stdout) {
+									stdout = result.stdout;
+									// If this works, we can proceed to the normal JSON parsing below
+								} else {
+									throw new Error(
+										"Mobile fallback returned no data",
+									);
+								}
+							} catch (fallbackErr) {
+								console.log(
+									"[Downloader] Mobile App fallback also failed.",
+								);
+								// Fallback 1: youtubei.js (Direct API)
+								const fallbackData =
+									await getYouTubeInfoFallback(videoId);
+								if (fallbackData)
+									return NextResponse.json(fallbackData);
 
-						// Fallback 2: Invidious API (Distributed Fetch)
-						const invidiousData =
-							await getInvidiousFallback(videoId);
-						if (invidiousData)
-							return NextResponse.json(invidiousData);
+								// Fallback 2: Invidious API (Distributed Fetch)
+								const invidiousData =
+									await getInvidiousFallback(videoId);
+								if (invidiousData)
+									return NextResponse.json(invidiousData);
 
-						// Fallback 3: Public API Signal + Cobalt
-						await getPublicApiFallback(videoId);
-						const cobaltData = await getCobaltFallback(videoUrl);
-						if (cobaltData) return NextResponse.json(cobaltData);
+								// Fallback 3: Public API Signal + Cobalt
+								await getPublicApiFallback(videoId);
+								const cobaltData =
+									await getCobaltFallback(videoUrl);
+								if (cobaltData)
+									return NextResponse.json(cobaltData);
+							}
+						} else {
+							// Normal fallback chain if no cookies were used in primary
+							const fallbackData =
+								await getYouTubeInfoFallback(videoId);
+							if (fallbackData)
+								return NextResponse.json(fallbackData);
+
+							const invidiousData =
+								await getInvidiousFallback(videoId);
+							if (invidiousData)
+								return NextResponse.json(invidiousData);
+
+							await getPublicApiFallback(videoId);
+							const cobaltData =
+								await getCobaltFallback(videoUrl);
+							if (cobaltData)
+								return NextResponse.json(cobaltData);
+						}
 					}
 				}
 
-				// If it's not YouTube or all fallbacks failed, throw original error
-				throw ytError;
+				// If stdout is still empty, it means all fallbacks failed
+				if (!stdout) throw ytError;
 			}
 
 			// Clean up temporary cookies file
@@ -452,12 +519,13 @@ export async function POST(request: NextRequest) {
 				) ||
 				ytError.message?.includes(
 					"Instagram API is not granting access",
-				)
+				) ||
+				ytError.message?.includes("cookies are no longer valid")
 			) {
 				const platformName = platform
 					? platform.charAt(0).toUpperCase() + platform.slice(1)
 					: "Platform";
-				errorMessage = `${platformName} has blocked this request due to bot detection or IP restrictions. Try another link or provide YOUTUBE_COOKIES in environment variables for a permanent fix.`;
+				errorMessage = `${platformName} has blocked this request due to bot detection or IP restrictions. If you added cookies, they might have expired. Try another link or provide fresh YOUTUBE_COOKIES.`;
 			}
 
 			return NextResponse.json(
