@@ -267,12 +267,28 @@ export async function POST(request: NextRequest) {
 
 			// Add specific workarounds based on platform
 			if (platform === "youtube") {
-				// Use mobile/vr clients which are currently most resilient
+				if (cookiesPath) {
+					// When cookies are present, we MUST use clients that support them (web, mweb, tv)
+					// Mobile app clients (ios, android) do not support cookie files in yt-dlp
+					ytDlpArgs.push(
+						"--extractor-args",
+						"youtube:player_client=web,mweb,tv;player_skip=webpage",
+						"--user-agent",
+						"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+						"--cookies",
+						cookiesPath,
+					);
+				} else {
+					// When no cookies are present, mobile/vr clients are our best bet for bypass
+					ytDlpArgs.push(
+						"--extractor-args",
+						"youtube:player_client=android_vr,ios;player_skip=webpage",
+						"--user-agent",
+						"com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X; en_US)",
+					);
+				}
+
 				ytDlpArgs.push(
-					"--extractor-args",
-					"youtube:player_client=android_vr,ios;player_skip=webpage",
-					"--user-agent",
-					"com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X; en_US)",
 					"--referer",
 					"https://www.youtube.com/",
 					"--no-check-certificates",
@@ -280,10 +296,6 @@ export async function POST(request: NextRequest) {
 					"--force-ipv4",
 					"--no-cache-dir",
 				);
-
-				if (cookiesPath) {
-					ytDlpArgs.push("--cookies", cookiesPath);
-				}
 			} else {
 				// Standard User-Agent for other platforms
 				ytDlpArgs.push(
