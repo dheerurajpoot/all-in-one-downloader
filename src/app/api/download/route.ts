@@ -3,8 +3,93 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import path from "path";
 import fs from "fs";
+import { Innertube } from "youtubei.js";
 
 const execFilePromise = promisify(execFile);
+
+// Helper for YouTube Fallback using youtubei.js
+async function getYouTubeInfoFallback(videoId: string) {
+	try {
+		console.log(
+			`[Downloader] Attempting youtubei.js fallback for: ${videoId}`,
+		);
+		const youtube = await Innertube.create();
+		const info = await youtube.getInfo(videoId);
+
+		const title = info.basic_info.title || "YouTube Video";
+		const thumbnail = info.basic_info.thumbnail?.[0]?.url || "";
+
+		// Filter and map formats
+		const formats = info.streaming_data?.adaptive_formats || [];
+		const combinedFormats = info.streaming_data?.formats || [];
+
+		const allFormats = [...combinedFormats, ...formats]
+			.filter((f) => f.url)
+			.map((f) => ({
+				quality: f.quality_label || f.quality || "Audio/Video",
+				url: `/api/proxy?url=${encodeURIComponent(f.url!)}&title=${encodeURIComponent(title)}&platform=youtube`,
+				size: f.content_length
+					? `${(Number(f.content_length) / 1048576).toFixed(2)} MB`
+					: undefined,
+			}));
+
+		return {
+			success: true,
+			title,
+			thumbnail,
+			downloadLink: allFormats[0]?.url || "",
+			formats: allFormats.slice(0, 15),
+		};
+	} catch (error) {
+		console.error("[Downloader] youtubei.js fallback failed:", error);
+		return null;
+	}
+}
+
+// Helper for Universal Fallback using public Cobalt API
+async function getCobaltFallback(videoUrl: string) {
+	const instances = [
+		"https://cobalt.meowing.de/",
+		"https://cobalt.qwedl.com/",
+		"https://cobalt.draco.sh/",
+		"https://cobalt.api.3kh0.net/",
+	];
+
+	for (const instance of instances) {
+		try {
+			console.log(
+				`[Downloader] Attempting Cobalt fallback via: ${instance}`,
+			);
+			const response = await fetch(instance, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Accept: "application/json",
+				},
+				body: JSON.stringify({
+					url: videoUrl,
+					videoQuality: "720",
+				}),
+			});
+
+			if (response.ok) {
+				const data = await response.json();
+				if (data.status !== "error" && data.url) {
+					return {
+						success: true,
+						title: data.text || "Video",
+						thumbnail: "",
+						downloadLink: `/api/proxy?url=${encodeURIComponent(data.url)}&title=${encodeURIComponent(data.text || "video")}&platform=youtube`,
+						formats: [{ quality: "Auto", url: data.url }],
+					};
+				}
+			}
+		} catch (e) {
+			continue;
+		}
+	}
+	return null;
+}
 
 export async function POST(request: NextRequest) {
 	try {
@@ -72,20 +157,14 @@ export async function POST(request: NextRequest) {
 
 			// Add specific workarounds based on platform
 			if (platform === "youtube") {
-				// Use iOS User-Agent with iOS client for best bypass results
-				const iosUserAgent =
-					"com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X; en_US)";
+				// Use the TV client which is currently the most resilient to blocks on server IPs
 				ytDlpArgs.push(
-					"--user-agent",
-					iosUserAgent,
 					"--extractor-args",
-					"youtube:player_client=ios,android;player_skip=webpage",
+					"youtube:player_client=tv;player_skip=webpage",
 					"--no-check-certificates",
 					"--geo-bypass",
 					"--force-ipv4",
 					"--no-cache-dir",
-					"--add-header",
-					"Accept-Language: en-US,en;q=0.9",
 				);
 
 				if (cookiesPath) {
@@ -114,11 +193,44 @@ export async function POST(request: NextRequest) {
 			// Add the URL as the last argument
 			ytDlpArgs.push(videoUrl);
 
-			const { stdout, stderr } = await execFilePromise(
-				binaryToUse,
-				ytDlpArgs,
-				{ timeout: 30000, maxBuffer: 10 * 1024 * 1024 }, // 30s timeout, 10MB buffer
-			);
+			let stdout = "";
+			let stderr = "";
+
+			try {
+				const result = await execFilePromise(binaryToUse, ytDlpArgs, {
+					timeout: 30000,
+					maxBuffer: 10 * 1024 * 1024,
+				});
+				stdout = result.stdout;
+				stderr = result.stderr;
+			} catch (ytError: any) {
+				console.error(
+					"[Downloader] Primary yt-dlp failed:",
+					ytError.message,
+				);
+
+				// --- YOUTUBE FALLBACK STRATEGY ---
+				if (platform === "youtube") {
+					const videoId =
+						videoUrl.match(/[?&]v=([^&]+)/)?.[1] ||
+						videoUrl.split("/").pop();
+
+					if (videoId) {
+						// Fallback 1: youtubei.js
+						const fallbackData =
+							await getYouTubeInfoFallback(videoId);
+						if (fallbackData)
+							return NextResponse.json(fallbackData);
+
+						// Fallback 2: Cobalt API
+						const cobaltData = await getCobaltFallback(videoUrl);
+						if (cobaltData) return NextResponse.json(cobaltData);
+					}
+				}
+
+				// If it's not YouTube or all fallbacks failed, throw original error
+				throw ytError;
+			}
 
 			// Clean up temporary cookies file
 			if (cookiesPath && fs.existsSync(cookiesPath)) {
