@@ -268,15 +268,17 @@ export async function POST(request: NextRequest) {
 			// Add specific workarounds based on platform
 			if (platform === "youtube") {
 				if (cookiesPath) {
-					// When cookies are present, we MUST use clients that support them (web, mweb, tv)
-					// Mobile app clients (ios, android) do not support cookie files in yt-dlp
+					// When cookies are present, the 'tv' client is the absolute best for servers
+					// It doesn't require PO Tokens or complex 'n' challenge solving
 					ytDlpArgs.push(
 						"--extractor-args",
-						"youtube:player_client=web,mweb,tv;player_skip=webpage",
+						"youtube:player_client=tv;player_skip=webpage",
 						"--user-agent",
 						"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
 						"--cookies",
 						cookiesPath,
+						"--format",
+						"best",
 					);
 				} else {
 					// When no cookies are present, mobile/vr clients are our best bet for bypass
