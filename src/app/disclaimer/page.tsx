@@ -1,5 +1,6 @@
 "use client";
 
+import { SITE_EMAIL, SITE_NAME } from "@/lib/constant";
 import { AlertCircle } from "lucide-react";
 
 export default function DisclaimerPage() {
@@ -13,7 +14,7 @@ export default function DisclaimerPage() {
 							Disclaimer
 						</h1>
 						<p className='text-muted-foreground'>
-							Last updated: January 2024
+							Last updated: June 2026
 						</p>
 					</div>
 
@@ -27,7 +28,7 @@ export default function DisclaimerPage() {
 								</h3>
 								<p className='text-yellow-800 dark:text-yellow-200 text-sm'>
 									Please read this disclaimer carefully before
-									using DownloadPro. By accessing and using
+									using {SITE_NAME}. By accessing and using
 									this service, you acknowledge that you have
 									read, understood, and agree to be bound by
 									all the terms outlined below.
@@ -43,13 +44,13 @@ export default function DisclaimerPage() {
 								Use at Your Own Risk
 							</h2>
 							<p className='text-muted-foreground leading-relaxed'>
-								DownloadPro is provided &quot;as is&quot; and
+								{SITE_NAME} is provided &quot;as is&quot; and
 								&quot;as available&quot; without any
 								representations or warranties, express or
 								implied. We make no warranty as to the
 								reliability, accuracy, completeness, or
 								timeliness of information available through the
-								service. Your use of DownloadPro is entirely at
+								service. Your use of {SITE_NAME} is entirely at
 								your own risk.
 							</p>
 						</section>
@@ -60,13 +61,13 @@ export default function DisclaimerPage() {
 								Limitation of Liability
 							</h2>
 							<p className='text-muted-foreground leading-relaxed'>
-								In no event shall DownloadPro, its creators,
-								owners, or contributors be liable for any
-								direct, indirect, incidental, special,
-								consequential, or punitive damages arising out
-								of or relating to your use of or inability to
-								use the service, even if we have been advised of
-								the possibility of such damages.
+								In no event shall {SITE_NAME}, owners, or
+								contributors be liable for any direct, indirect,
+								incidental, special, consequential, or punitive
+								damages arising out of or relating to your use
+								of or inability to use the service, even if we
+								have been advised of the possibility of such
+								damages.
 							</p>
 						</section>
 
@@ -76,7 +77,7 @@ export default function DisclaimerPage() {
 								Copyright & Intellectual Property
 							</h2>
 							<p className='text-muted-foreground leading-relaxed'>
-								DownloadPro respects intellectual property
+								{SITE_NAME} respects intellectual property
 								rights. Users are solely responsible for
 								ensuring they have the legal right to download
 								any video from a given platform. Video content
@@ -93,11 +94,11 @@ export default function DisclaimerPage() {
 								Third Party Platform Terms
 							</h2>
 							<p className='text-muted-foreground leading-relaxed'>
-								By using DownloadPro to download videos, you
+								By using {SITE_NAME} to download videos, you
 								acknowledge that you are subject to the terms of
 								service and policies of the original platform
 								(YouTube, Instagram, Facebook, etc.).
-								DownloadPro is not affiliated with, endorsed by,
+								{SITE_NAME} is not affiliated with, endorsed by,
 								or associated with these platforms. Users must
 								comply with all applicable laws and the terms of
 								service of these platforms.
@@ -110,10 +111,10 @@ export default function DisclaimerPage() {
 								Legal Compliance
 							</h2>
 							<p className='text-muted-foreground leading-relaxed'>
-								Users of DownloadPro are responsible for
+								Users of {SITE_NAME} are responsible for
 								ensuring their use of the service complies with
 								all applicable local, state, national, and
-								international laws and regulations. DownloadPro
+								international laws and regulations. {SITE_NAME}
 								is not responsible for any illegal use of the
 								service or illegal downloads. We do not condone
 								copyright infringement or any other illegal
@@ -127,7 +128,7 @@ export default function DisclaimerPage() {
 								No Endorsement
 							</h2>
 							<p className='text-muted-foreground leading-relaxed'>
-								DownloadPro does not endorse, approve, or
+								{SITE_NAME} does not endorse, approve, or
 								sponsor any video content, channel, or creator
 								whose content is downloaded through our service.
 								The existence of any link to a video or external
@@ -142,7 +143,7 @@ export default function DisclaimerPage() {
 								Service Interruption
 							</h2>
 							<p className='text-muted-foreground leading-relaxed'>
-								DownloadPro does not guarantee uninterrupted or
+								{SITE_NAME} does not guarantee uninterrupted or
 								error-free service. We reserve the right to
 								modify, suspend, or discontinue the service at
 								any time without notice. We are not responsible
@@ -157,10 +158,10 @@ export default function DisclaimerPage() {
 								Changes to This Disclaimer
 							</h2>
 							<p className='text-muted-foreground leading-relaxed'>
-								DownloadPro reserves the right to modify this
+								{SITE_NAME} reserves the right to modify this
 								disclaimer at any time. Changes will become
 								effective immediately upon posting to the
-								website. Your continued use of DownloadPro
+								website. Your continued use of {SITE_NAME}
 								following the posting of revised disclaimer
 								terms means that you accept and agree to the
 								changes.
@@ -173,14 +174,14 @@ export default function DisclaimerPage() {
 								User Conduct
 							</h2>
 							<p className='text-muted-foreground leading-relaxed'>
-								You agree not to use DownloadPro for any purpose
+								You agree not to use {SITE_NAME} for any purpose
 								that is unlawful or prohibited by these terms.
 								You specifically agree not to access or search
-								the DownloadPro using any engine, software,
-								tool, agent, or other device or mechanism
-								(including spiders, robots, crawlers, or data
-								mining tools) other than the publicly supported
-								interfaces provided by DownloadPro.
+								{SITE_NAME} using any engine, software, tool,
+								agent, or other device or mechanism (including
+								spiders, robots, crawlers, or data mining tools)
+								other than the publicly supported interfaces
+								provided by {SITE_NAME}.
 							</p>
 						</section>
 
@@ -208,14 +209,14 @@ export default function DisclaimerPage() {
 							<p className='text-muted-foreground leading-relaxed'>
 								This disclaimer, together with our Terms of
 								Service and Privacy Policy, constitutes the
-								entire agreement between you and DownloadPro
+								entire agreement between you and {SITE_NAME}
 								regarding your use of the service. If you have
 								questions about this disclaimer, please contact
 								us at
 								<a
-									href='mailto:legal@downloadpro.com'
+									href={`mailto:${SITE_EMAIL}`}
 									className='text-primary hover:underline ml-1'>
-									legal@downloadpro.com
+									{SITE_EMAIL}
 								</a>
 							</p>
 						</section>

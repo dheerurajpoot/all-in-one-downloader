@@ -1,5 +1,7 @@
 "use client";
 
+import { SITE_EMAIL, SITE_NAME } from "@/lib/constant";
+
 export default function PrivacyPage() {
 	return (
 		<div className='min-h-screen flex flex-col bg-background'>
@@ -11,7 +13,7 @@ export default function PrivacyPage() {
 							Privacy Policy
 						</h1>
 						<p className='text-muted-foreground'>
-							Last updated: January 2024
+							Last updated: June 2026
 						</p>
 					</div>
 
@@ -22,8 +24,8 @@ export default function PrivacyPage() {
 								Introduction
 							</h2>
 							<p className='text-muted-foreground leading-relaxed'>
-								DownloadPro (&quot;we&quot; or &quot;us&quot; or
-								&quot;our&quot;) operates the DownloadPro
+								{SITE_NAME} (&quot;we&quot; or &quot;us&quot; or
+								&quot;our&quot;) operates the {SITE_NAME}
 								website. This page informs you of our policies
 								regarding the collection, use, and disclosure of
 								personal data when you use our service and the
@@ -38,7 +40,7 @@ export default function PrivacyPage() {
 							</h2>
 							<p className='text-muted-foreground leading-relaxed'>
 								We collect very minimal information when you use
-								DownloadPro. Specifically:
+								{SITE_NAME}. Specifically:
 							</p>
 							<ul className='space-y-2 text-muted-foreground ml-6'>
 								<li>
@@ -50,7 +52,7 @@ export default function PrivacyPage() {
 								</li>
 								<li>
 									• <strong>No account creation:</strong>{" "}
-									DownloadPro can be used entirely without
+									{SITE_NAME} can be used entirely without
 									registration
 								</li>
 								<li>
@@ -119,7 +121,7 @@ export default function PrivacyPage() {
 								Cookies
 							</h2>
 							<p className='text-muted-foreground leading-relaxed'>
-								DownloadPro uses cookies to enhance your
+								{SITE_NAME} uses cookies to enhance your
 								experience. These are small files stored on your
 								device that help us remember your preferences
 								and improve our service. You can control cookies
@@ -186,9 +188,9 @@ export default function PrivacyPage() {
 							<p className='text-muted-foreground'>
 								<strong>Email:</strong>{" "}
 								<a
-									href='mailto:privacy@downloadpro.com'
+									href={`mailto:${SITE_EMAIL}`}
 									className='text-primary hover:underline'>
-									privacy@downloadpro.com
+									{SITE_EMAIL}
 								</a>
 							</p>
 						</section>

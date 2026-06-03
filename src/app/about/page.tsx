@@ -1,6 +1,11 @@
-"use client";
-
+import { SITE_AUTHOR, SITE_EMAIL, SITE_NAME } from "@/lib/constant";
 import { CheckCircle } from "lucide-react";
+
+export const metadata = {
+	title: `About ${SITE_NAME}`,
+	description: `Learn more about ${SITE_NAME} and its features. ${SITE_NAME} is a tool for downloading videos from social media platforms.`,
+	author: SITE_AUTHOR,
+};
 
 export default function AboutPage() {
 	return (
@@ -10,7 +15,7 @@ export default function AboutPage() {
 					{/* Header */}
 					<div className='space-y-6 mb-16'>
 						<h1 className='text-4xl sm:text-5xl font-bold text-foreground'>
-							About DownloadPro
+							About {SITE_NAME}
 						</h1>
 						<p className='text-xl text-muted-foreground'>
 							Your trusted solution for downloading videos from
@@ -25,7 +30,7 @@ export default function AboutPage() {
 								Our Mission
 							</h2>
 							<p className='text-muted-foreground leading-relaxed'>
-								DownloadPro is dedicated to providing a simple,
+								{SITE_NAME} is dedicated to providing a simple,
 								fast, and secure way to download videos from
 								your favorite social media platforms. We
 								understand that sometimes you want to save
@@ -105,9 +110,9 @@ export default function AboutPage() {
 								Have questions or feedback? We&apos;d love to
 								hear from you! Contact our support team at{" "}
 								<a
-									href='mailto:support@downloadpro.com'
+									href={`mailto:${SITE_EMAIL}`}
 									className='text-primary hover:underline'>
-									support@downloadpro.com
+									{SITE_EMAIL}
 								</a>
 							</p>
 						</section>

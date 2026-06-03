@@ -77,10 +77,13 @@ async function getYouTubeInfoFallback(videoId: string) {
 						f.url || (await f.decipher(youtube.session.player));
 					const isAudio = !f.has_video;
 					const isVideo = !f.has_audio;
-					const quality =
-						f.quality_label ||
-						f.quality ||
-						(isAudio ? "Audio" : "Video");
+					let quality = f.quality_label || f.quality;
+
+					if (!quality) {
+						if (f.height) quality = `${f.height}p`;
+						else if (f.width) quality = `${f.width}p`;
+						else quality = isAudio ? "Audio" : "Video";
+					}
 
 					return {
 						quality:
@@ -105,14 +108,23 @@ async function getYouTubeInfoFallback(videoId: string) {
 			return null;
 		}
 
+		// Sort and filter to top 3 meaningful options
+		const sorted = allFormats.sort((a: any, b: any) => {
+			const aCombined = a.quality.includes("Video + Audio");
+			const bCombined = b.quality.includes("Video + Audio");
+			if (aCombined && !bCombined) return -1;
+			if (!aCombined && bCombined) return 1;
+			return 0;
+		});
+
+		const top3 = sorted.slice(0, 3);
+
 		return {
 			success: true,
 			title,
 			thumbnail,
-			downloadLink:
-				allFormats.find((f) => f.quality.includes("Video + Audio"))
-					?.url || allFormats[0].url,
-			formats: allFormats.slice(0, 15),
+			downloadLink: top3[0]?.url || "",
+			formats: top3,
 		};
 	} catch (error) {
 		console.error("[Downloader] youtubei.js fallback failed:", error);
@@ -143,11 +155,13 @@ async function getInvidiousFallback(videoId: string) {
 				const data = await res.json();
 				if (data.formatStreams && data.formatStreams.length > 0) {
 					const title = data.title || "YouTube Video";
-					const formats = data.formatStreams.map((f: any) => ({
-						quality: f.qualityLabel || f.quality || "Video",
-						url: `/api/proxy?url=${encodeURIComponent(f.url)}&title=${encodeURIComponent(title)}&platform=youtube`,
-						size: f.size,
-					}));
+					const formats = data.formatStreams
+						.map((f: any) => ({
+							quality: f.qualityLabel || f.quality || "Video",
+							url: `/api/proxy?url=${encodeURIComponent(f.url)}&title=${encodeURIComponent(title)}&platform=youtube`,
+							size: f.size,
+						}))
+						.slice(0, 3);
 
 					return {
 						success: true,
@@ -262,7 +276,11 @@ export async function POST(request: NextRequest) {
 						"/tmp",
 						`cookies_${Date.now()}.txt`,
 					);
-					fs.writeFileSync(cookiesPath, process.env.YOUTUBE_COOKIES);
+					const cookiesContent = process.env.YOUTUBE_COOKIES.replace(
+						/\\n/g,
+						"\n",
+					);
+					fs.writeFileSync(cookiesPath, cookiesContent);
 					console.log(
 						`[Downloader] Using cookies from environment variable`,
 					);
@@ -288,8 +306,6 @@ export async function POST(request: NextRequest) {
 						"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
 						"--cookies",
 						cookiesPath,
-						"--format",
-						"best",
 					);
 				} else {
 					// When no cookies are present, mobile/vr clients are our best bet for bypass
@@ -456,23 +472,28 @@ export async function POST(request: NextRequest) {
 			}
 
 			// Filter formats to get useful ones
-			// We prefer formats with both video and audio, or the best available
-			const formats = info.formats
-				.filter(
-					(f: any) =>
-						f.url && (f.vcodec !== "none" || f.acodec !== "none"),
-				)
+			// We prioritize formats that have both video and audio (combined)
+			const allFormats = info.formats
+				.filter((f: any) => f.url)
 				.map((f: any) => {
+					const hasVideo = f.vcodec !== "none";
+					const hasAudio = f.acodec !== "none";
+
 					let quality =
-						f.format_note ||
-						f.resolution ||
-						`${f.width}p` ||
-						f.format_id;
-					if (f.vcodec !== "none" && f.acodec !== "none") {
-						quality += " (Video + Audio)";
-					} else if (f.vcodec !== "none") {
+						f.quality_label || f.format_note || f.resolution;
+
+					if (!quality) {
+						if (f.height) quality = `${f.height}p`;
+						else if (f.width) quality = `${f.width}p`;
+						else quality = f.format_id || "Unknown Quality";
+					}
+
+					// Make labels more user-friendly
+					if (hasVideo && hasAudio) {
+						quality += " (HD Video)";
+					} else if (hasVideo) {
 						quality += " (Video only)";
-					} else if (f.acodec !== "none") {
+					} else if (hasAudio) {
 						quality += " (Audio only)";
 					}
 
@@ -484,30 +505,59 @@ export async function POST(request: NextRequest) {
 							: f.filesize_approx
 								? `~${(f.filesize_approx / 1048576).toFixed(2)} MB`
 								: undefined,
+						hasVideo,
+						hasAudio,
+						height: f.height || 0,
 					};
-				})
-				.reverse(); // Often best qualities are at the end
+				});
 
-			// Find a good default download link (best combined format if possible)
-			const bestCombined = info.formats
-				.filter(
-					(f: any) =>
-						f.url && f.vcodec !== "none" && f.acodec !== "none",
-				)
-				.pop();
+			// Sort formats: Combined (Video+Audio) first, then by resolution (height)
+			const sortedFormats = allFormats.sort((a: any, b: any) => {
+				// Combined formats first
+				if (a.hasVideo && a.hasAudio && !(b.hasVideo && b.hasAudio))
+					return -1;
+				if (!(a.hasVideo && a.hasAudio) && b.hasVideo && b.hasAudio)
+					return 1;
+				// Then by height
+				return b.height - a.height;
+			});
 
-			const downloadLink = bestCombined
-				? `/api/proxy?url=${encodeURIComponent(bestCombined.url)}&title=${encodeURIComponent(title)}&platform=${platform}`
-				: formats.length > 0
-					? formats[0].url
-					: "";
+			// Filter to top 3 meaningful options (e.g., Best Combined, Second Best Combined, Best Audio)
+			const topFormats: any[] = [];
+			const combined = sortedFormats.filter(
+				(f: any) => f.hasVideo && f.hasAudio,
+			);
+			const videoOnly = sortedFormats.filter(
+				(f: any) => f.hasVideo && !f.hasAudio,
+			);
+			const audioOnly = sortedFormats.filter(
+				(f: any) => f.hasAudio && !f.hasVideo,
+			);
+
+			// Add up to 2 best combined formats
+			if (combined.length > 0) topFormats.push(combined[0]);
+			if (combined.length > 1) topFormats.push(combined[1]);
+
+			// Add best audio only if we have space
+			if (topFormats.length < 3 && audioOnly.length > 0)
+				topFormats.push(audioOnly[0]);
+
+			// Fill remaining slots with best video only if needed
+			if (topFormats.length < 3 && videoOnly.length > 0) {
+				for (const f of videoOnly) {
+					if (topFormats.length >= 3) break;
+					if (!topFormats.includes(f)) topFormats.push(f);
+				}
+			}
+
+			const downloadLink = topFormats.length > 0 ? topFormats[0].url : "";
 
 			return NextResponse.json({
 				success: true,
 				title: title,
 				thumbnail: thumbnail,
 				downloadLink: downloadLink,
-				formats: formats.slice(0, 15), // Limit to top 15 formats
+				formats: topFormats,
 			});
 		} catch (ytError: any) {
 			console.error("[Downloader] yt-dlp execution failed:", ytError);

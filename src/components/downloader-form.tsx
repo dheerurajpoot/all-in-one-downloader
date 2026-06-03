@@ -227,7 +227,9 @@ export function DownloaderForm() {
 							</div>
 						)}
 
-						{(response.thumbnail || response.downloadLink || selectedQuality) && (
+						{(response.thumbnail ||
+							response.downloadLink ||
+							selectedQuality) && (
 							<div className='space-y-2'>
 								<p className='text-xs font-bold text-muted-foreground uppercase tracking-wider'>
 									Preview
@@ -243,7 +245,10 @@ export function DownloaderForm() {
 										/>
 									) : (
 										<video
-											src={selectedQuality || response.downloadLink}
+											src={
+												selectedQuality ||
+												response.downloadLink
+											}
 											className='w-full h-full object-cover'
 											controls
 											muted
@@ -270,74 +275,82 @@ export function DownloaderForm() {
 										response.downloadLinks ||
 										response.picker ||
 										[]
-									).map(
-										(
-											item: {
-												url: string;
-												thumb?: string;
-												type?: string;
-												quality?: string;
-												size?: string;
-											},
-											idx: number,
-										) => (
-											<button
-												key={idx}
-												type='button'
-												onClick={() =>
-													setSelectedQuality(item.url)
-												}
-												className={`w-full p-4 text-left rounded-xl border-2 transition-all group ${
-													selectedQuality === item.url
-														? "border-primary bg-primary/10 shadow-sm"
-														: "border-border bg-background hover:border-primary/50"
-												}`}>
-												<div className='flex items-center justify-between'>
-													<div className='flex items-center gap-3'>
-														{item.thumb && (
-															<div className='h-12 w-12 rounded-lg overflow-hidden border border-border shrink-0 relative'>
-																<Image
-																	src={
-																		item.thumb
-																	}
-																	alt=''
-																	fill
-																	unoptimized
-																	className='object-cover'
-																/>
-															</div>
-														)}
-														<div className='space-y-1'>
-															<p className='font-bold text-foreground group-hover:text-primary transition-colors'>
-																{item.quality ||
-																	(item.type
-																		? `Media ${idx + 1} (${item.type})`
-																		: `Media ${idx + 1}`)}
-															</p>
-															{item.size && (
-																<p className='text-xs text-muted-foreground font-medium'>
-																	File size:{" "}
-																	{item.size}
+									)
+										.slice(0, 3)
+										.map(
+											(
+												item: {
+													url: string;
+													thumb?: string;
+													type?: string;
+													quality?: string;
+													size?: string;
+												},
+												idx: number,
+											) => (
+												<button
+													key={idx}
+													type='button'
+													onClick={() =>
+														setSelectedQuality(
+															item.url,
+														)
+													}
+													className={`w-full p-4 text-left rounded-xl border-2 transition-all group ${
+														selectedQuality ===
+														item.url
+															? "border-primary bg-primary/10 shadow-sm"
+															: "border-border bg-background hover:border-primary/50"
+													}`}>
+													<div className='flex items-center justify-between'>
+														<div className='flex items-center gap-3'>
+															{item.thumb && (
+																<div className='h-12 w-12 rounded-lg overflow-hidden border border-border shrink-0 relative'>
+																	<Image
+																		src={
+																			item.thumb
+																		}
+																		alt=''
+																		fill
+																		unoptimized
+																		className='object-cover'
+																	/>
+																</div>
+															)}
+															<div className='space-y-1'>
+																<p className='font-bold text-foreground group-hover:text-primary transition-colors'>
+																	{item.quality ||
+																		(item.type
+																			? `Media ${idx + 1} (${item.type})`
+																			: `Media ${idx + 1}`)}
 																</p>
+																{item.size && (
+																	<p className='text-xs text-muted-foreground font-medium'>
+																		File
+																		size:{" "}
+																		{
+																			item.size
+																		}
+																	</p>
+																)}
+															</div>
+														</div>
+														<div
+															className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
+																selectedQuality ===
+																item.url
+																	? "border-primary bg-primary text-primary-foreground"
+																	: "border-muted-foreground/30 group-hover:border-primary/50"
+															}`}>
+															{selectedQuality ===
+																item.url && (
+																<CheckCircle className='w-4 h-4' />
 															)}
 														</div>
 													</div>
-													<div
-														className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
-															selectedQuality ===
-															item.url
-																? "border-primary bg-primary text-primary-foreground"
-																: "border-muted-foreground/30 group-hover:border-primary/50"
-														}`}>
-														{selectedQuality ===
-															item.url && (
-															<CheckCircle className='w-4 h-4' />
-														)}
-													</div>
-												</div>
-											</button>
-										),
-									)}
+												</button>
+											),
+										)}
 								</div>
 							</div>
 						) : null}

@@ -4,6 +4,13 @@ import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { Navbar } from "../components/navbar";
 import { Footer } from "../components/footer";
+import {
+	SITE_TITLE,
+	SITE_DESCRIPTION,
+	SITE_AUTHOR,
+	SITE_NAME,
+} from "@/lib/constant";
+import Script from "next/script";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
 	subsets: ["latin"],
@@ -11,10 +18,8 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-	title: "DownloadPro - Download YouTube, Instagram & Facebook Videos",
-	description:
-		"Fast and easy video downloader for YouTube, Instagram reels, shorts, and Facebook videos. Download high-quality videos instantly.",
-	generator: "v0.app",
+	title: SITE_TITLE,
+	description: SITE_DESCRIPTION,
 	keywords: [
 		"video downloader",
 		"youtube downloader",
@@ -22,30 +27,25 @@ export const metadata: Metadata = {
 		"facebook downloader",
 		"reels downloader",
 	],
+	authors: [{ name: `${SITE_NAME} Team` }],
+	creator: SITE_AUTHOR,
+	publisher: SITE_AUTHOR,
+	robots: "index, follow",
 	openGraph: {
-		title: "All-In-One Downloader - Universal Video Downloader",
-		description:
-			"Download videos from YouTube, Instagram, and Facebook with multiple quality options.",
+		title: SITE_TITLE,
+		description: SITE_DESCRIPTION,
 		type: "website",
 	},
-	icons: {
-		icon: [
-			{
-				url: "/icon-light-32x32.png",
-				media: "(prefers-color-scheme: light)",
-			},
-			{
-				url: "/icon-dark-32x32.png",
-				media: "(prefers-color-scheme: dark)",
-			},
-			{
-				url: "/icon.svg",
-				type: "image/svg+xml",
-			},
-		],
-		apple: "/apple-icon.png",
-	},
 };
+
+const analyticsScript = `
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-XXXXXXXXXX', {
+    page_path: window.location.pathname,
+  });
+`;
 
 export default function RootLayout({
 	children,
@@ -54,6 +54,36 @@ export default function RootLayout({
 }>) {
 	return (
 		<html lang='en' className={`${plusJakartaSans.variable} bg-background`}>
+			<head suppressHydrationWarning>
+				<meta
+					name='viewport'
+					content='width=device-width, initial-scale=1, maximum-scale=5'
+				/>
+				<meta name='theme-color' content='#3b82f6' />
+				{/* Google Analytics */}
+				<Script
+					strategy='afterInteractive'
+					src={`https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX`} // Replace with your Google Analytics ID
+				/>
+				<Script
+					id='google-analytics'
+					strategy='afterInteractive'
+					dangerouslySetInnerHTML={{
+						__html: analyticsScript,
+					}}
+				/>
+				{/* Google Search Console */}
+				<meta
+					name='google-site-verification'
+					content='YOUR-VERIFICATION-CODE-HERE'
+				/>
+				{/* AdSense */}
+				<Script
+					strategy='afterInteractive'
+					src='https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXXXX' // Replace with your AdSense ID
+					crossOrigin='anonymous'
+				/>
+			</head>
 			<body className='font-sans antialiased'>
 				<Navbar />
 				{children}
