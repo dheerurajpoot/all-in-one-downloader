@@ -226,6 +226,115 @@ async function getCobaltFallback(videoUrl: string) {
 	return null;
 }
 
+// Helper for YouTube Fallback using RapidAPI (YouTube86)
+async function getRapidApiYoutube86Fallback(videoUrl: string) {
+	try {
+		console.log(
+			`[Downloader] Attempting YouTube86 RapidAPI fallback for: ${videoUrl}`,
+		);
+		const apiKey = "d8045c213amsh143b96bd9642de6p1e99b0jsn87aad002725a";
+		const apiHost = "youtube86.p.rapidapi.com";
+
+		// Step 1: Request video information and start download job
+		// Most YouTube download APIs on RapidAPI have an endpoint like /v2/fetch or /dl
+		// For youtube86, based on common patterns and the status endpoint provided, we'll try to initiate the request.
+		const res = await fetch(
+			`https://${apiHost}/?url=${encodeURIComponent(videoUrl)}`,
+			{
+				method: "GET",
+				headers: {
+					"x-rapidapi-key": apiKey,
+					"x-rapidapi-host": apiHost,
+				},
+			},
+		);
+
+		if (!res.ok) {
+			console.log(
+				`[Downloader] YouTube86 start request failed: ${res.status}`,
+			);
+			return null;
+		}
+
+		let data = await res.json();
+
+		// If the response is a job ID (common in asynchronous APIs), we poll the status endpoint
+		if (data.id || data.jobId || data.sid) {
+			const jobId = data.id || data.jobId || data.sid;
+			console.log(
+				`[Downloader] YouTube86 Job ID: ${jobId}, polling status...`,
+			);
+
+			// Poll status up to 5 times
+			for (let i = 0; i < 5; i++) {
+				await new Promise((resolve) => setTimeout(resolve, 2000));
+				const statusRes = await fetch(
+					`https://${apiHost}/status/${jobId}`,
+					{
+						method: "GET",
+						headers: {
+							"x-rapidapi-key": apiKey,
+							"x-rapidapi-host": apiHost,
+						},
+					},
+				);
+
+				if (statusRes.ok) {
+					const statusData = await statusRes.json();
+					if (
+						statusData.status === "finished" ||
+						statusData.links ||
+						statusData.url
+					) {
+						data = statusData;
+						break;
+					}
+				}
+			}
+		}
+
+		// Handle the response data
+		if (data && (data.links || data.url || data.formats)) {
+			const title = data.title || "YouTube Video";
+			const thumbnail = data.thumbnail || "";
+
+			// Normalize formats
+			const rawFormats = data.links || data.formats || [];
+			const formats = Array.isArray(rawFormats)
+				? rawFormats.map((f: any) => ({
+						quality: f.quality || f.label || "Auto",
+						url: `/api/proxy?url=${encodeURIComponent(f.url || f.link)}&title=${encodeURIComponent(title)}&platform=youtube`,
+						size: f.size,
+					}))
+				: [];
+
+			if (formats.length === 0 && data.url) {
+				formats.push({
+					quality: "Auto",
+					url: `/api/proxy?url=${encodeURIComponent(data.url)}&title=${encodeURIComponent(title)}&platform=youtube`,
+					size: undefined,
+				});
+			}
+
+			if (formats.length > 0) {
+				return {
+					success: true,
+					title,
+					thumbnail,
+					downloadLink: formats[0].url,
+					formats: formats.slice(0, 3),
+				};
+			}
+		}
+	} catch (error) {
+		console.error(
+			"[Downloader] YouTube86 RapidAPI fallback failed:",
+			error,
+		);
+	}
+	return null;
+}
+
 export async function POST(request: NextRequest) {
 	try {
 		const body = await request.json();
@@ -410,6 +519,14 @@ export async function POST(request: NextRequest) {
 								if (fallbackData)
 									return NextResponse.json(fallbackData);
 
+								// Fallback 1.5: RapidAPI YouTube86
+								const rapidApiData =
+									await getRapidApiYoutube86Fallback(
+										videoUrl,
+									);
+								if (rapidApiData)
+									return NextResponse.json(rapidApiData);
+
 								// Fallback 2: Invidious API (Distributed Fetch)
 								const invidiousData =
 									await getInvidiousFallback(videoId);
@@ -429,6 +546,12 @@ export async function POST(request: NextRequest) {
 								await getYouTubeInfoFallback(videoId);
 							if (fallbackData)
 								return NextResponse.json(fallbackData);
+
+							// Fallback 1.5: RapidAPI YouTube86
+							const rapidApiData =
+								await getRapidApiYoutube86Fallback(videoUrl);
+							if (rapidApiData)
+								return NextResponse.json(rapidApiData);
 
 							const invidiousData =
 								await getInvidiousFallback(videoId);
